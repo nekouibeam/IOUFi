@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IOUFi — Favor Economy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#F7F5F0;--surface:#FFFFFF;--border:#E2DDD5;--border2:#C8C2B8;
+    --text:#1A1814;--muted:#6B665E;--accent:#2D6A4F;--accent-bg:#E8F4F0;
+    --warn:#B5451B;--warn-bg:#FAEAE3;--info:#1A4A8A;--info-bg:#E6EEFA;
+    --tag-bg:#F0EDE8;
+  }
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+  a{color:inherit;text-decoration:none}
+  
+  /* Layout */
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:200px;background:var(--surface);border-right:1px solid var(--border);padding:0;flex-shrink:0;position:fixed;top:0;bottom:0;display:flex;flex-direction:column}
+  .main{margin-left:200px;flex:1;padding:28px 32px;max-width:960px}
+  
+  /* Sidebar */
+  .logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+  .logo-name{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;letter-spacing:-0.5px}
+  .logo-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .nav{padding:8px 0;flex:1}
+  .nav-section{padding:10px 18px 4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+  .nav-item{display:flex;align-items:center;gap:8px;padding:8px 18px;cursor:pointer;color:var(--muted);font-size:13px;transition:all .15s;border-left:2px solid transparent}
+  .nav-item:hover{color:var(--text);background:#F7F5F0}
+  .nav-item.active{color:var(--accent);background:var(--accent-bg);border-left-color:var(--accent)}
+  .nav-item .icon{width:16px;text-align:center;font-size:16px}
+  .treasury-bar{padding:14px 18px;border-top:1px solid var(--border);background:#F7F5F0}
+  .treasury-label{font-size:11px;color:var(--muted);margin-bottom:3px}
+  .treasury-val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;color:var(--accent)}
+  
+  /* Common */
+  .page{display:none}
+  .page.active{display:block}
+  .page-title{font-size:20px;font-weight:500;margin-bottom:4px}
+  .page-sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+  
+  /* Stat row */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+  .stat-val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500}
+  .stat-val.up{color:var(--accent)}
+  .stat-val.down{color:var(--warn)}
+  
+  /* Cards */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+  .card-title{font-size:15px;font-weight:500;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .section-title{font-size:13px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
+  
+  /* NFT card */
+  .nft-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .nft-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;position:relative}
+  .nft-card.highlight{border-color:var(--accent);background:var(--accent-bg)}
+  .nft-id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:8px}
+  .nft-parties{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;margin-bottom:8px}
+  .nft-arrow{color:var(--muted);font-size:16px}
+  .nft-amount{font-family:'IBM Plex Mono',monospace;font-size:18px;color:var(--accent);font-weight:500;margin-bottom:6px}
+  .nft-desc{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+  .nft-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;background:var(--tag-bg);color:var(--muted);font-family:'IBM Plex Mono',monospace}
+  .tag.green{background:var(--accent-bg);color:var(--accent)}
+  .tag.red{background:var(--warn-bg);color:var(--warn)}
+  .tag.blue{background:var(--info-bg);color:var(--info)}
+  .nft-actions{display:flex;gap:8px;margin-top:12px}
+  
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all .15s;font-weight:400}
+  .btn:hover{background:var(--bg);border-color:var(--text)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{background:#235C42}
+  .btn.danger{background:var(--warn);color:#fff;border-color:var(--warn)}
+  .btn.sm{padding:5px 11px;font-size:12px}
+  .btn.full{width:100%;justify-content:center}
+  
+  /* Form */
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .form-group{margin-bottom:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select,textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;background:var(--surface);color:var(--text);outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:70px}
+  
+  /* Table */
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--border)}
+  td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--bg)}
+  
+  /* Avatar */
+  .avatar{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0}
+  .avatar.andy{background:#E6EEFA;color:#1A4A8A}
+  .avatar.woody{background:#E8F4F0;color:#2D6A4F}
+  .avatar.amy{background:#FAEAE3;color:#B5451B}
+  .avatar.kevin{background:#F5F0FA;color:#6A3DAF}
+  
+  /* User row */
+  .user-row{display:flex;align-items:center;gap:10px}
+  
+  /* Alert / Toast */
+  .alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;border-left:3px solid}
+  .alert.success{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+  .alert.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+  .alert.info{background:var(--info-bg);border-color:var(--info);color:var(--info)}
+  
+  /* Vote bar */
+  .vote-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:6px 0}
+  .vote-fill{height:100%;background:var(--accent);border-radius:3px}
+  
+  /* Tabs */
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+  .tab{padding:10px 18px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+  .tab-content{display:none}
+  .tab-content.active{display:block}
+  
+  /* Scores */
+  .score-pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-family:'IBM Plex Mono',monospace}
+  
+  /* Profile card */
+  .profile-header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+  .profile-avatar{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500}
+  .profile-skills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  
+  /* Progress ring placeholder */
+  .rep-score{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:500}
+  
+  /* Two col */
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.two-col{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}.sidebar{display:none}.main{margin-left:0}}
+  
+  /* Bankruptcy badge */
+  .bankrupt-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;background:var(--warn-bg);color:var(--warn);font-size:12px;font-weight:500;border:1px solid #F0C4B0}
+  
+  /* Timeline */
+  .timeline{list-style:none}
+  .timeline li{position:relative;padding:0 0 16px 24px;font-size:13px;color:var(--muted);line-height:1.5}
+  .timeline li::before{content:'';position:absolute;left:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--border2)}
+  .timeline li.done::before{background:var(--accent)}
+  .timeline li strong{color:var(--text)}
+  
+  /* Modal overlay simulation */
+  .modal-overlay{background:rgba(26,24,20,.45);border-radius:12px;padding:40px 20px;display:flex;align-items:center;justify-content:center;min-height:320px;margin-bottom:16px}
+  .modal{background:var(--surface);border-radius:10px;padding:24px;width:100%;max-width:400px;border:1px solid var(--border)}
+  .modal-title{font-size:16px;font-weight:500;margin-bottom:4px}
+  .modal-sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+  
+  /* Step indicator */
+  .steps{display:flex;gap:0;margin-bottom:24px}
+  .step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .step-num{width:22px;height:22px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px}
+  .step.active .step-num{background:var(--accent);border-color:var(--accent);color:#fff}
+  .step.done .step-num{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+  .step-line{flex:1;height:1px;background:var(--border);margin:0 4px}
+  
+  /* Compact list */
+  .item-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+  .item-row:last-child{border-bottom:none}
+  .item-left{display:flex;align-items:center;gap:10px}
+  .item-right{text-align:right}
+
+  /* Special: bankrupt user row */
+  .bankrupt-row td{color:var(--warn);opacity:.7}
+</style>
+</head>
+<body>
+
+<div class="shell">
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-name">IOUFi</div>
+    <div class="logo-sub">Favor Economy</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">主要</div>
+    <div class="nav-item active" onclick="goto('dashboard')"><span class="icon">⌂</span> 總覽</div>
+    <div class="nav-item" onclick="goto('issue')"><span class="icon">＋</span> 發放人情債</div>
+    <div class="nav-item" onclick="goto('mywallet')"><span class="icon">◎</span> 我的 NFT</div>
+    <div class="nav-section">場景</div>
+    <div class="nav-item" onclick="goto('repay')"><span class="icon">↩</span> 償還人情</div>
+    <div class="nav-item" onclick="goto('transfer')"><span class="icon">⇄</span> 轉讓 NFT</div>
+    <div class="nav-item" onclick="goto('marketplace')"><span class="icon">⊡</span> Favor 市場</div>
+    <div class="nav-item" onclick="goto('lending')"><span class="icon">⬡</span> 借貸</div>
+    <div class="nav-section">治理</div>
+    <div class="nav-item" onclick="goto('dao')"><span class="icon">◈</span> DAO 投票</div>
+    <div class="nav-section">系統</div>
+    <div class="nav-item" onclick="goto('insurance')"><span class="icon">⛨</span> 違約保險</div>
+    <div class="nav-item" onclick="goto('bankruptcy')"><span class="icon">⚠</span> 破產紀錄</div>
+  </nav>
+  <div class="treasury-bar">
+    <div class="treasury-label">DAO Treasury</div>
+    <div class="treasury-val">12,400 FAVOR</div>
+  </div>
+</aside>
+
+<!-- Main area -->
+<main class="main">
+
+<!-- ══════════════ DASHBOARD ══════════════ -->
+<div class="page active" id="page-dashboard">
+  <div class="profile-header">
+    <div class="profile-avatar andy">A</div>
+    <div>
+      <div style="font-size:17px;font-weight:500">Andy</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">加入 127 天</div>
+      <div class="profile-skills">
+        <span class="tag">程式設計</span>
+        <span class="tag">後端架構</span>
+        <span class="tag">資料庫</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">信譽積分</div>
+      <div class="stat-val up">340</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">欠我人情 NFT</div>
+      <div class="stat-val">3</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">我欠人情 NFT</div>
+      <div class="stat-val">1</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">FAVOR 持有</div>
+      <div class="stat-val">340</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">最新動態</div>
+    <ul class="timeline">
+      <li class="done"><strong>Woody</strong> 欠你 1 份人情 — 幫忙搬家  <span class="tag" style="margin-left:4px">+50 FAVOR</span></li>
+      <li class="done"><strong>Woody</strong> 償還了 1 份人情 — 請吃早餐  <span class="tag green" style="margin-left:4px">中規中矩</span></li>
+      <li class="done">你加入 IOUFi，獲得初始獎勵  <span class="tag green" style="margin-left:4px">+200 FAVOR</span></li>
+      <li><strong>Amy</strong> 欠你 1 份人情（轉讓而來）— 修電腦</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">系統用戶排行</div>
+    <table>
+      <thead><tr><th>用戶</th><th>信譽積分</th><th>持有 NFT</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="user-row"><div class="avatar woody">W</div> Woody</div></td>
+          <td><span class="stat-val up" style="font-size:14px">510</span></td>
+          <td>2</td>
+          <td><span class="tag green">正常</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-row"><div class="avatar andy">A</div> Andy</div></td>
+          <td><span class="stat-val up" style="font-size:14px">340</span></td>
+          <td>3</td>
+          <td><span class="tag green">正常</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-row"><div class="avatar amy">Am</div> Amy</div></td>
+          <td><span class="stat-val" style="font-size:14px;color:var(--muted)">180</span></td>
+          <td>1</td>
+          <td><span class="tag green">正常</span></td>
+        </tr>
+        <tr class="bankrupt-row">
+          <td><div class="user-row"><div class="avatar" style="background:#F0EDE8;color:#888">K</div> Kevin</div></td>
+          <td><span style="font-size:14px;color:var(--warn);font-family:'IBM Plex Mono',monospace">0</span></td>
+          <td>0</td>
+          <td><span class="tag red">破產</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════ ISSUE NFT ══════════════ -->
+<div class="page" id="page-issue">
+  <div class="page-title">發放人情債 NFT</div>
+  <div class="page-sub">幫助對方後，對方可主動掃碼，或你直接發放給對方</div>
+
+  <div class="alert info">場景：Andy 幫了 Woody 搬家，Woody 開口說「我欠你一個人情」，Andy 發放此 NFT。</div>
+
+  <div class="steps">
+    <div class="step active"><div class="step-num">1</div><span>填寫資訊</span></div>
+    <div class="step-line"></div>
+    <div class="step"><div class="step-num">2</div><span>確認發放</span></div>
+    <div class="step-line"></div>
+    <div class="step"><div class="step-num">3</div><span>完成</span></div>
+  </div>
+
+  <div class="card">
+    <div class="form-row">
+      <div class="form-group">
+        <label>對方帳戶（欠你人情的人）</label>
+        <select><option>Woody (@woody)</option><option>Amy (@amy)</option></select>
+      </div>
+      <div class="form-group">
+        <label>你方帳戶（你）</label>
+        <input value="Andy (@andy)" disabled style="background:var(--bg)">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>人情事件描述</label>
+      <input placeholder="例如：幫忙搬家、提供技術諮詢…" value="幫 Woody 搬家（整天）">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>FAVOR 積分價值</label>
+        <input type="number" value="50" placeholder="50">
+      </div>
+      <div class="form-group">
+        <label>發生日期</label>
+        <input type="date" value="2025-05-15">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>NFT 上備註（可選，e.g. 對方擅長什麼）</label>
+      <input placeholder="例如：Woody 擅長修電腦、烹飪" value="Woody 擅長修電腦、Python">
+    </div>
+    <div style="margin-top:4px;padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.7">
+      NFT 鑄造後：<br>
+      • Woody 信譽積分 <span style="color:var(--warn)">−50</span>，Andy 信譽積分 <span style="color:var(--accent)">+50</span><br>
+      • 1% Transfer Fee 進入 DAO Treasury
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn primary" onclick="showIssueConfirm()">確認發放</button>
+      <button class="btn">取消</button>
+    </div>
+  </div>
+
+  <div id="issue-confirm" style="display:none">
+    <div class="alert success">✓ 人情債 NFT 已發放！NFT #0042 — Woody 欠 Andy 50 FAVOR（幫忙搬家）。信譽積分已更新。</div>
+    <div class="nft-grid">
+      <div class="nft-card highlight">
+        <div class="nft-id">#0042 · 剛發放</div>
+        <div class="nft-parties"><div class="avatar woody" style="width:22px;height:22px;font-size:10px">W</div> Woody <span class="nft-arrow">→</span> <div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy</div>
+        <div class="nft-amount">50 FAVOR</div>
+        <div class="nft-desc">幫 Woody 搬家（整天）</div>
+        <div class="nft-meta">
+          <span class="tag">2025-05-15</span>
+          <span class="tag green">有效</span>
+          <span class="tag">擅長修電腦、Python</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MY WALLET ══════════════ -->
+<div class="page" id="page-mywallet">
+  <div class="page-title">我的 NFT</div>
+  <div class="page-sub">Andy 持有的人情債憑證</div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab(this,'tab-owe-me')">別人欠我（3）</div>
+    <div class="tab" onclick="switchTab(this,'tab-i-owe')">我欠別人（1）</div>
+  </div>
+
+  <div class="tab-content active" id="tab-owe-me">
+    <div class="nft-grid">
+      <div class="nft-card">
+        <div class="nft-id">#0042</div>
+        <div class="nft-parties"><div class="avatar woody" style="width:22px;height:22px;font-size:10px">W</div> Woody <span class="nft-arrow">→</span> <div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy</div>
+        <div class="nft-amount">50 FAVOR</div>
+        <div class="nft-desc">幫 Woody 搬家（整天）</div>
+        <div class="nft-meta">
+          <span class="tag">2025-05-15</span>
+          <span class="tag green">有效</span>
+          <span class="tag">擅長修電腦、Python</span>
+        </div>
+        <div class="nft-actions">
+          <button class="btn sm" onclick="goto('repay')">標記償還</button>
+          <button class="btn sm" onclick="goto('transfer')">轉讓</button>
+          <button class="btn sm" onclick="goto('insurance')">投保</button>
+        </div>
+      </div>
+      <div class="nft-card">
+        <div class="nft-id">#0038</div>
+        <div class="nft-parties"><div class="avatar amy" style="width:22px;height:22px;font-size:10px">Am</div> Amy <span class="nft-arrow">→</span> <div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy</div>
+        <div class="nft-amount" style="color:var(--info)">30 FAVOR <span style="font-size:11px;color:var(--muted)">→ 31（+時間增值）</span></div>
+        <div class="nft-desc">修電腦（轉讓而來）</div>
+        <div class="nft-meta">
+          <span class="tag">2025-04-01</span>
+          <span class="tag blue">持有 45 天</span>
+          <span class="tag">擅長 UIUX</span>
+        </div>
+        <div class="nft-actions">
+          <button class="btn sm" onclick="goto('repay')">標記償還</button>
+          <button class="btn sm" onclick="goto('transfer')">轉讓</button>
+        </div>
+      </div>
+      <div class="nft-card">
+        <div class="nft-id">#0031</div>
+        <div class="nft-parties"><div class="avatar woody" style="width:22px;height:22px;font-size:10px">W</div> Woody <span class="nft-arrow">→</span> <div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy</div>
+        <div class="nft-amount">20 FAVOR</div>
+        <div class="nft-desc">幫忙找工作內推</div>
+        <div class="nft-meta">
+          <span class="tag">2025-03-10</span>
+          <span class="tag red">逾期 66 天</span>
+        </div>
+        <div class="nft-actions">
+          <button class="btn sm" onclick="goto('repay')">標記償還</button>
+          <button class="btn sm danger" style="font-size:11px">申報違約</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-i-owe">
+    <div class="nft-grid">
+      <div class="nft-card" style="border-color:var(--warn);background:var(--warn-bg)">
+        <div class="nft-id">#0028</div>
+        <div class="nft-parties"><div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy <span class="nft-arrow">→</span> <div class="avatar amy" style="width:22px;height:22px;font-size:10px">Am</div> Amy</div>
+        <div class="nft-amount" style="color:var(--warn)">40 FAVOR</div>
+        <div class="nft-desc">Amy 幫我找到實習機會</div>
+        <div class="nft-meta">
+          <span class="tag">2025-04-20</span>
+          <span class="tag red">我需要還</span>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn full danger sm">主動申請償還</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ REPAY ══════════════ -->
+<div class="page" id="page-repay">
+  <div class="page-title">償還人情</div>
+  <div class="page-sub">情境一：Woody 請 Andy 吃早餐，Andy 評估這份償還的價值</div>
+
+  <div class="alert info">Woody 說：「我買了早餐，算還你那份搬家的人情。」</div>
+
+  <div class="card">
+    <div class="card-title">選擇要償還的 NFT</div>
+    <div class="item-row">
+      <div class="item-left">
+        <div class="avatar woody">W</div>
+        <div>
+          <div style="font-size:13px;font-weight:500">#0042 — Woody 欠 Andy</div>
+          <div style="font-size:11px;color:var(--muted)">幫忙搬家 · 50 FAVOR</div>
+        </div>
+      </div>
+      <input type="radio" name="nft" checked style="width:auto;margin-right:4px">
+    </div>
+    <div class="item-row">
+      <div class="item-left">
+        <div class="avatar woody">W</div>
+        <div>
+          <div style="font-size:13px;font-weight:500">#0031 — Woody 欠 Andy</div>
+          <div style="font-size:11px;color:var(--muted)">幫忙找工作內推 · 20 FAVOR</div>
+        </div>
+      </div>
+      <input type="radio" name="nft" style="width:auto;margin-right:4px">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Andy 評估這次償還</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Woody 請 Andy 吃了一份早餐 (100元)，你怎麼評價？</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div id="eval-a" class="btn" onclick="selectEval('a')" style="flex:1;justify-content:center;flex-direction:column;align-items:center;padding:16px;gap:4px;min-width:120px">
+        <div style="font-size:18px">😍</div>
+        <div style="font-weight:500">物超所值</div>
+        <div style="font-size:11px;color:var(--muted)">Woody 獲得額外獎勵</div>
+      </div>
+      <div id="eval-b" class="btn" onclick="selectEval('b')" style="flex:1;justify-content:center;flex-direction:column;align-items:center;padding:16px;gap:4px;min-width:120px">
+        <div style="font-size:18px">😐</div>
+        <div style="font-weight:500">中規中矩</div>
+        <div style="font-size:11px;color:var(--muted)">等值 FAVOR 轉移</div>
+      </div>
+      <div id="eval-c" class="btn" onclick="selectEval('c')" style="flex:1;justify-content:center;flex-direction:column;align-items:center;padding:16px;gap:4px;min-width:120px">
+        <div style="font-size:18px">😤</div>
+        <div style="font-weight:500">很糟糕</div>
+        <div style="font-size:11px;color:var(--muted)">Woody 無法取回 token</div>
+      </div>
+    </div>
+    <div id="eval-result" style="margin-top:16px;display:none"></div>
+    <div style="margin-top:14px">
+      <button class="btn primary" onclick="confirmRepay()">確認評估</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TRANSFER ══════════════ -->
+<div class="page" id="page-transfer">
+  <div class="page-title">轉讓 NFT</div>
+  <div class="page-sub">情境二：Andy 把 Woody 的人情債轉讓給 Amy，由 Woody 直接為 Amy 服務</div>
+
+  <div class="alert info">Amy 請 Andy 幫她找人修電腦，Andy 知道 Woody 擅長這個，決定轉讓。</div>
+
+  <div class="card">
+    <div class="card-title">選擇要轉讓的 NFT</div>
+    <div class="item-row">
+      <div class="item-left">
+        <div class="avatar woody">W</div>
+        <div>
+          <div style="font-size:13px;font-weight:500">#0042 — Woody 欠 Andy</div>
+          <div style="font-size:11px;color:var(--muted)">幫忙搬家 · 50 FAVOR · 擅長修電腦、Python</div>
+        </div>
+      </div>
+      <span class="tag green">適合此次任務</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">轉讓給</div>
+    <div class="form-group">
+      <label>受讓人（接收人情債的人）</label>
+      <select><option>Amy (@amy)</option><option>Kevin (@kevin)</option></select>
+    </div>
+    <div class="form-group">
+      <label>服務說明（Amy 希望 Woody 做什麼）</label>
+      <input value="幫 Amy 修電腦（重灌系統）">
+    </div>
+    <div style="padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+      轉讓後：<br>
+      • #0042 原 NFT 銷毀<br>
+      • 新建 NFT：Woody → Amy（修電腦，50 FAVOR）<br>
+      • Andy 獲得：Amy → Andy（修電腦服務，30 FAVOR）<br>
+      • Transfer Fee（1%）→ DAO Treasury
+    </div>
+    <button class="btn primary" onclick="showTransferConfirm()">確認轉讓</button>
+  </div>
+
+  <div id="transfer-confirm" style="display:none">
+    <div class="alert success">✓ 轉讓成功！#0042 已銷毀，新建 NFT #0043（Woody→Amy）與 NFT #0044（Amy→Andy）。</div>
+    <div class="nft-grid">
+      <div class="nft-card highlight">
+        <div class="nft-id">#0043 · 新建</div>
+        <div class="nft-parties"><div class="avatar woody" style="width:22px;height:22px;font-size:10px">W</div> Woody <span class="nft-arrow">→</span> <div class="avatar amy" style="width:22px;height:22px;font-size:10px">Am</div> Amy</div>
+        <div class="nft-amount">50 FAVOR</div>
+        <div class="nft-desc">幫 Amy 修電腦（重灌系統）</div>
+        <div class="nft-meta"><span class="tag">2025-05-15</span><span class="tag green">有效</span></div>
+      </div>
+      <div class="nft-card highlight">
+        <div class="nft-id">#0044 · 新建</div>
+        <div class="nft-parties"><div class="avatar amy" style="width:22px;height:22px;font-size:10px">Am</div> Amy <span class="nft-arrow">→</span> <div class="avatar andy" style="width:22px;height:22px;font-size:10px">A</div> Andy</div>
+        <div class="nft-amount">30 FAVOR</div>
+        <div class="nft-desc">安排 Woody 幫 Amy 修電腦</div>
+        <div class="nft-meta"><span class="tag">2025-05-15</span><span class="tag green">有效</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MARKETPLACE ══════════════ -->
+<div class="page" id="page-marketplace">
+  <div class="page-title">Favor 市場</div>
+  <div class="page-sub">情境三 &amp; 八：尋找或提供人情服務</div>
+
+  <div class="alert info">Amy 需要一個 AI mentor，進入市場尋找合適的人。</div>
+
+  <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+    <input placeholder="搜尋技能或服務…" style="flex:1;min-width:160px">
+    <select style="width:auto"><option>所有類型</option><option>技術</option><option>設計</option><option>商業</option></select>
+    <button class="btn primary" onclick="goto('request')">+ 發布需求</button>
+  </div>
+
+  <div class="section-title">可提供服務的用戶</div>
+  <div class="nft-grid">
+    <div class="nft-card">
+      <div class="nft-parties" style="margin-bottom:6px"><div class="avatar woody">W</div> <span style="font-size:15px;font-weight:500">Woody</span></div>
+      <div class="nft-meta" style="margin-bottom:8px"><span class="tag">Python</span><span class="tag">Smart Contract</span><span class="tag">Startup</span><span class="tag">修電腦</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">信譽積分 <strong style="color:var(--text)">510</strong> · 已履行 8 筆 · 持有 NFT 2 張</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">「我喜歡幫助技術問題，也對新創感興趣。」</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm primary" onclick="goto('request')">請求 Favor</button>
+        <button class="btn sm">查看詳情</button>
+      </div>
+    </div>
+    <div class="nft-card">
+      <div class="nft-parties" style="margin-bottom:6px"><div class="avatar amy">Am</div> <span style="font-size:15px;font-weight:500">Amy</span></div>
+      <div class="nft-meta" style="margin-bottom:8px"><span class="tag">UI/UX</span><span class="tag">Figma</span><span class="tag">React</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">信譽積分 <strong style="color:var(--text)">180</strong> · 已履行 3 筆 · 持有 NFT 1 張</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">「擅長介面設計，可協助前端開發。」</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm primary" onclick="goto('request')">請求 Favor</button>
+        <button class="btn sm">查看詳情</button>
+      </div>
+    </div>
+    <div class="nft-card">
+      <div class="nft-parties" style="margin-bottom:6px"><div class="avatar andy">A</div> <span style="font-size:15px;font-weight:500">Andy</span></div>
+      <div class="nft-meta" style="margin-bottom:8px"><span class="tag">後端架構</span><span class="tag">資料庫</span><span class="tag">程式設計</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">信譽積分 <strong style="color:var(--text)">340</strong> · 已履行 5 筆 · 持有 NFT 3 張</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm primary">請求 Favor</button>
+        <button class="btn sm">查看詳情</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:24px">掛牌 Favor NFT（直接購買）</div>
+  <table>
+    <thead><tr><th>NFT</th><th>服務內容</th><th>技能</th><th>價格</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="nft-id" style="display:inline">#0038</span></td>
+        <td>Amy 欠 Andy（修電腦）</td>
+        <td><span class="tag">UIUX</span></td>
+        <td><span style="font-family:'IBM Plex Mono',monospace;color:var(--accent)">31 FAVOR</span></td>
+        <td><button class="btn sm primary">購買</button></td>
+      </tr>
+      <tr>
+        <td><span class="nft-id" style="display:inline">#0040</span></td>
+        <td>Woody 欠某人（諮詢）</td>
+        <td><span class="tag">Python</span></td>
+        <td><span style="font-family:'IBM Plex Mono',monospace;color:var(--accent)">25 FAVOR</span></td>
+        <td><button class="btn sm primary">購買</button></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════ REQUEST (sub-page) ══════════════ -->
+<div class="page" id="page-request">
+  <div class="page-title">發布 Favor 需求</div>
+  <div class="page-sub">情境三：Amy 主動尋求 AI Mentor</div>
+  <div class="card">
+    <div class="form-group">
+      <label>我需要的服務</label>
+      <input value="AI Mentor —  1 對 1 機器學習入門指導（3 次課）">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>願意支付 FAVOR</label>
+        <input type="number" value="60">
+      </div>
+      <div class="form-group">
+        <label>希望完成時間</label>
+        <input type="date" value="2025-06-15">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn primary" onclick="goto('marketplace')">發布需求</button>
+      <button class="btn" onclick="goto('marketplace')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LENDING ══════════════ -->
+<div class="page" id="page-lending">
+  <div class="page-title">借貸</div>
+  <div class="page-sub">情境六：以信譽積分為抵押，借取更多 FAVOR token</div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab(this,'tab-borrow')">借款</div>
+    <div class="tab" onclick="switchTab(this,'tab-lend')">存款賺利息</div>
+  </div>
+
+  <div class="tab-content active" id="tab-borrow">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">我的信譽積分</div><div class="stat-val up">340</div></div>
+      <div class="stat"><div class="stat-label">可借上限</div><div class="stat-val">300</div></div>
+      <div class="stat"><div class="stat-label">目前借款</div><div class="stat-val down">0</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">申請借款</div>
+      <div class="form-group">
+        <label>借款金額（FAVOR）</label>
+        <input type="number" placeholder="最多 300" value="100">
+      </div>
+      <div class="form-group">
+        <label>用途說明</label>
+        <select>
+          <option>投票 — 支持 SDGs 活動提案</option>
+          <option>發起本月活動提案</option>
+          <option>其他</option>
+        </select>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+        • 借款利率：<strong style="color:var(--text)">8% / 月</strong>（DAO 設定）<br>
+        • 來源：Lending Pool + DAO Treasury 混合<br>
+        • 未還款 → 信譽積分下降 → 觸發 liquidation
+      </div>
+      <button class="btn primary">確認借款</button>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-lend">
+    <div class="card">
+      <div class="card-title">存入 Lending Pool</div>
+      <div class="form-group">
+        <label>存入金額（FAVOR）</label>
+        <input type="number" placeholder="例如：100" value="100">
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+        • 預估年化利率：<strong style="color:var(--accent)">3.2% APY</strong><br>
+        • 每月計算利息並自動發放<br>
+        • 可隨時提取（有 24hr 解鎖期）
+      </div>
+      <button class="btn primary">存入 Pool</button>
+    </div>
+    <div class="card">
+      <div class="card-title">我的存款紀錄</div>
+      <table>
+        <thead><tr><th>存入時間</th><th>金額</th><th>累計利息</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>2025-04-01</td><td>100 FAVOR</td><td>+0.27 FAVOR</td><td><button class="btn sm">提取</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DAO ══════════════ -->
+<div class="page" id="page-dao">
+  <div class="page-title">DAO 投票</div>
+  <div class="page-sub">情境四：用 FAVOR token 決定社群活動與系統規則</div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab(this,'tab-sdg')">SDGs 月活動</div>
+    <div class="tab" onclick="switchTab(this,'tab-gov')">系統治理提案</div>
+  </div>
+
+  <div class="tab-content active" id="tab-sdg">
+    <div class="alert info">本月投票截止：2025-05-31 · 投票花費 token 會暫時鎖定，結束後扣除小額 governance fee 後退還。</div>
+    <div class="card" style="margin-bottom:12px;border:1.5px solid var(--accent)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <span class="tag blue">SDG 14</span>
+          <span class="tag blue" style="margin-left:4px">SDG 13</span>
+          <div style="font-size:15px;font-weight:500;margin-top:6px">新竹香山海岸淨灘活動</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">發起人：Woody · 花費 200 FAVOR 建立</div>
+        </div>
+        <span class="tag green">領先</span>
+      </div>
+      <div class="vote-bar"><div class="vote-fill" style="width:62%"></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">620 FAVOR 投入 · 62% 支持</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" placeholder="投入 FAVOR" style="width:120px" value="20">
+        <button class="btn primary sm">投票支持</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <span class="tag">SDG 4</span>
+          <div style="font-size:15px;font-weight:500;margin-top:6px">偏鄉小學程式教育工作坊</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">發起人：Amy · 花費 200 FAVOR 建立</div>
+        </div>
+      </div>
+      <div class="vote-bar"><div class="vote-fill" style="width:38%"></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">380 FAVOR 投入 · 38% 支持</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" placeholder="投入 FAVOR" style="width:120px">
+        <button class="btn sm">投票支持</button>
+      </div>
+    </div>
+    <button class="btn" onclick="showNewProposal()">+ 建立本月活動（需 200 FAVOR）</button>
+    <div id="new-proposal-form" style="display:none;margin-top:14px">
+      <div class="card">
+        <div class="card-title">建立活動提案</div>
+        <div class="form-group"><label>活動名稱</label><input placeholder="例如：校園二手書交換市集"></div>
+        <div class="form-row">
+          <div class="form-group"><label>SDGs 標籤</label><select><option>SDG 1 消除貧窮</option><option>SDG 4 優質教育</option><option>SDG 11 永續城市</option><option>SDG 13 氣候行動</option><option>SDG 14 海洋生態</option></select></div>
+          <div class="form-group"><label>預計日期</label><input type="date"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">花費：200 FAVOR（若獲最高票則舉辦此活動）</div>
+        <div style="display:flex;gap:10px"><button class="btn primary sm">送出提案</button><button class="btn sm" onclick="document.getElementById('new-proposal-form').style.display='none'">取消</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-gov">
+    <div class="alert info">高信譽積分使用者可提出系統規則提案，投票後智能合約自動更新參數。</div>
+    <table>
+      <thead><tr><th>提案</th><th>描述</th><th>結果</th><th>你的票</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="nft-id" style="display:inline">#32</span></td>
+          <td style="font-size:12px">提高人情 NFT 最低 collateral ratio 20%→30%</td>
+          <td><span class="tag green">通過</span></td>
+          <td style="color:var(--muted);font-size:12px">已結束</td>
+        </tr>
+        <tr>
+          <td><span class="nft-id" style="display:inline">#41</span></td>
+          <td style="font-size:12px">降低人情違約的 slashing 懲罰</td>
+          <td><span class="tag red">否決</span></td>
+          <td style="color:var(--muted);font-size:12px">已結束</td>
+        </tr>
+        <tr>
+          <td><span class="nft-id" style="display:inline">#66</span></td>
+          <td style="font-size:12px">提高借貸利率以增加 Treasury 收入</td>
+          <td><div class="vote-bar" style="width:80px"><div class="vote-fill" style="width:55%"></div></div><div style="font-size:11px;color:var(--muted)">投票中 · 55%</div></td>
+          <td><div style="display:flex;align-items:center;gap:6px"><input type="number" style="width:70px" placeholder="FAVOR"><button class="btn sm">投票</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════ INSURANCE ══════════════ -->
+<div class="page" id="page-insurance">
+  <div class="page-title">違約保險</div>
+  <div class="page-sub">若持有的 NFT 遭到違約，由 Insurance Pool 賠付</div>
+
+  <div class="alert info">Andy 決定為 #0042（Woody 欠 Andy 50 FAVOR）購買保險，以防 Woody 違約。</div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">購買保險</div>
+      <div class="form-group">
+        <label>選擇要保 NFT</label>
+        <select><option>#0042 — Woody 欠 Andy · 50 FAVOR</option><option>#0031 — Woody 欠 Andy · 20 FAVOR（逾期）</option></select>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+        • 保費：<strong style="color:var(--text)">5 FAVOR</strong>（一次性）<br>
+        • 保障金額：NFT 面值 100%<br>
+        • 若 Woody 違約 → 賠付 50 FAVOR<br>
+        • 保費進入 Insurance Pool
+      </div>
+      <button class="btn primary full">支付 5 FAVOR 購買保險</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Insurance Pool 狀態</div>
+      <div class="item-row">
+        <span style="color:var(--muted);font-size:13px">Pool 總資金</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-weight:500">2,150 FAVOR</span>
+      </div>
+      <div class="item-row">
+        <span style="color:var(--muted);font-size:13px">已承保 NFT</span>
+        <span>43 張</span>
+      </div>
+      <div class="item-row">
+        <span style="color:var(--muted);font-size:13px">本月理賠</span>
+        <span style="color:var(--warn);font-family:'IBM Plex Mono',monospace">-120 FAVOR</span>
+      </div>
+      <div class="item-row">
+        <div>
+          <div style="font-size:13px;font-weight:500">#0028 — Kevin 違約</div>
+          <div style="font-size:11px;color:var(--muted)">已賠付 40 FAVOR</div>
+        </div>
+        <span class="tag red">已理賠</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">我的保單</div>
+    <table>
+      <thead><tr><th>NFT</th><th>保障金額</th><th>狀態</th><th>到期</th></tr></thead>
+      <tbody>
+        <tr><td>#0031</td><td>20 FAVOR</td><td><span class="tag blue">有效</span></td><td>2025-07-01</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════ BANKRUPTCY ══════════════ -->
+<div class="page" id="page-bankruptcy">
+  <div class="page-title">破產紀錄</div>
+  <div class="page-sub">情境七：信譽歸零者的系統限制</div>
+
+  <div class="alert warn">⚠ 破產用戶無法發放新 NFT、無法借貸、DAO 投票權降低。</div>
+
+  <div class="card" style="border-color:var(--warn);background:var(--warn-bg)">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div class="user-row">
+        <div class="avatar" style="background:#F0EDE8;color:#888;width:44px;height:44px;font-size:18px">K</div>
+        <div>
+          <div style="font-size:16px;font-weight:500">Kevin</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <div class="bankrupt-badge">⚠ Socially Bankrupt</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:var(--warn)">0</div>
+        <div style="font-size:11px;color:var(--muted)">信譽積分</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid #F0C4B0">
+      <div style="font-size:13px;font-weight:500;margin-bottom:8px">破產原因</div>
+      <ul class="timeline" style="margin-bottom:0">
+        <li class="done"><strong>持續欠債不還</strong> — 5 張 NFT 逾期超過 90 天</li>
+        <li class="done"><strong>違約懲罰</strong> — 信譽積分持續下降至 0</li>
+        <li class="done"><strong>Slashing</strong> — Staking collateral 已清算，回補至 Lending Pool</li>
+        <li class="done"><strong>標記破產</strong> — 系統自動執行</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">破產限制清單</div>
+    <table>
+      <thead><tr><th>功能</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td>發放新 NFT</td><td><span class="tag red">禁用</span></td></tr>
+        <tr><td>借貸</td><td><span class="tag red">禁用</span></td></tr>
+        <tr><td>DAO 投票</td><td><span class="tag">限制（10% 權重）</span></td></tr>
+        <tr><td>Marketplace</td><td><span class="tag">可瀏覽，無法交易</span></td></tr>
+        <tr><td>持有現有 NFT</td><td><span class="tag green">允許（NFT 價值暴跌）</span></td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.7">
+      恢復條件：償還所有欠款、信譽積分回到 50 以上 → 可申請 DAO 投票解除破產狀態。
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+function goto(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const p=document.getElementById('page-'+id);
+  if(p) p.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
+  });
+  window.scrollTo(0,0);
+}
+
+function switchTab(el,targetId){
+  const container=el.closest('.page')||el.parentElement.parentElement;
+  el.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const allContent=container.querySelectorAll('.tab-content');
+  allContent.forEach(c=>c.classList.remove('active'));
+  const target=document.getElementById(targetId);
+  if(target) target.classList.add('active');
+}
+
+function showIssueConfirm(){
+  const c=document.getElementById('issue-confirm');
+  c.style.display='block';
+  c.scrollIntoView({behavior:'smooth'});
+}
+
+function showTransferConfirm(){
+  const c=document.getElementById('transfer-confirm');
+  c.style.display='block';
+  c.scrollIntoView({behavior:'smooth'});
+}
+
+let evalChosen='';
+function selectEval(v){
+  ['a','b','c'].forEach(x=>{
+    const el=document.getElementById('eval-'+x);
+    el.style.background='var(--surface)';
+    el.style.borderColor='var(--border2)';
+  });
+  evalChosen=v;
+  const el=document.getElementById('eval-'+v);
+  el.style.background='var(--accent-bg)';
+  el.style.borderColor='var(--accent)';
+}
+
+function confirmRepay(){
+  if(!evalChosen){alert('請先選擇評估結果');return;}
+  const msgs={
+    a:'✓ 物超所值！NFT #0042 已銷毀。Woody 獲得 65 FAVOR（原值 50 + 30% 額外獎勵），Andy 信譽 −50。',
+    b:'✓ 中規中矩。NFT #0042 已銷毀。等值 50 FAVOR 轉移，Andy −50 / Woody +50。',
+    c:'✓ 評估為「很糟糕」。NFT #0042 已銷毀。Woody 不獲得任何 token 退回，Andy 信譽保持不變。'
+  };
+  const r=document.getElementById('eval-result');
+  r.style.display='block';
+  r.innerHTML='<div class="alert success">'+msgs[evalChosen]+'</div>';
+  r.scrollIntoView({behavior:'smooth'});
+}
+
+function showNewProposal(){
+  const f=document.getElementById('new-proposal-form');
+  f.style.display=f.style.display==='none'?'block':'none';
+}
+</script>
+</body>
+</html>
