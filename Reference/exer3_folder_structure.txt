@@ -1,0 +1,56 @@
+C:. (Solidity/fundraising 專案根目錄)
+│  .gitignore            # 排除不需要上傳到 Git 的檔案 (如 cache, out) [cite: 1]
+│  .gitmodules           # 管理 lib/ 中的子模組依賴 (如 OpenZeppelin) [cite: 1]
+│  foundry.toml          # Foundry 設定檔，定義編譯與測試環境 [cite: 2]
+│  
+├─src (核心合約邏輯)
+│  │  Fundraiser.sol     # 【實例合約】管理單一募資專案。包含捐款(donate)、提款(withdraw) [cite: 5, 129]
+│  │                     # 與受益人(beneficiary)設定。繼承自 OpenZeppelin Ownable [cite: 62, 130]
+│  └─ FundraiserFactory.sol # 【工廠合約】負責部署(new)並追蹤所有 Fundraiser 實體 [cite: 5, 131]
+│                        # 提供分頁查詢(fundraisers)功能供前端顯示專案列表 [cite: 14, 131]
+│
+├─script (部署指令碼)
+│  └─ FundraiserFactory.s.sol # 【部署腳本】執行 forge script 時呼叫，將工廠合約部署至鏈上 [cite: 6, 132]
+│
+├─lib (外部依賴庫)
+│  ├─ forge-std          # Foundry 標準測試庫 [cite: 2]
+│  └─ openzeppelin-contracts # 工業標準合約庫。提供 Ownable.sol 權限管理功能 [cite: 3, 132]
+│
+├─out (編譯產物)
+│  ├─ Fundraiser.sol/Fundraiser.json        # 包含實例合約的 ABI (前端互動必備) 
+│  └─ FundraiserFactory.sol/FundraiserFactory.json # 包含工廠合約的 ABI 
+│
+├─broadcast (部署紀錄)
+│  └─ FundraiserFactory.s.sol/31337/...
+│     └─ run-latest.json # 紀錄部署後的合約地址(Address)。前端以此地址連線工廠 
+│
+├─orig (備份目錄)
+│  │  Counter.s.sol.orig # 存放初始化的範例檔案。移至此處是為了讓 src/ 專注於募資邏輯 [cite: 6, 132]
+│  │  Counter.sol.orig   # [cite: 6]
+│  └─ Counter.t.sol.orig # [cite: 6]
+│
+├─cache                  # 存放編譯過程的暫存檔案 [cite: 2]
+└─test                   # 存放合約測試檔案 (*.t.sol) [cite: 4]
+
+前端 ─ go.cjs               # 【橋樑腳本】自動從 out/ 抓取 ABI，從 broadcast/ 抓取地址給前端
+
+🔄 檔案間的互動與角色關係
+
+1. 內部依賴關係 (Backend Logic)
+工廠與實例：FundraiserFactory.sol 內部引用了 Fundraiser.sol 。
+當使用者呼叫 createFundraiser() 時，工廠會執行 new Fundraiser(...) 並將呼叫者 (msg.sender) 設為該新專案的 owner 。
+標準庫引用：Fundraiser.sol 繼承 Ownable ，確保只有該募資專案的建立者可以執行 withdraw() 提款動作 。
+
+2. 前後端連動橋樑 (The Bridge)
+ABI 供應：前端 React 需要知道合約有哪些函數。這由 out/ 中的 .json 檔案提供 。
+地址對接：前端需要知道合約部署在哪。這由 broadcast/ 紀錄的地址提供 。
+自動化流程：go.cjs 腳本扮演搬運工，將上述兩項資訊從 Solidity 目錄打包，傳遞到前端目錄供 ethers.js 初始化合約物件 。
+
+3. 完整操作流 (Workflow)
+開發：在 src/ 編寫合約。
+編譯：forge build 產生 out/ 的 ABI 。
+部署：script/ 執行部署並在 broadcast/ 紀錄地址 。
+同步：執行 go.cjs 同步合約資訊至前端 。
+互動：使用者透過 React 介面觸發 Factory 產生新募資案，或對特定的 Fundraiser 捐款 。
+
+這套架構確保了後端邏輯 (Solidity)、部署流程 (Foundry) 與前端介面 (React) 之間既能獨立運作，又能透過自動化腳本緊密結合。

@@ -1,0 +1,55 @@
+IOUFi implementation folder structure
+
+IOUFi/
+- solidity/
+  - src/
+    - IOUNFT.sol
+    - ReputationLedger.sol
+    - Treasury.sol
+    - SDGsDAO.sol
+    - SimpleERC721.sol
+    - SimpleOwnable.sol
+    - SimpleReentrancyGuard.sol
+    - interfaces/
+      - IReputationLedger.sol
+  - test/
+    - IOUNFT.t.sol
+    - ReputationRules.t.sol
+    - TimeoutRefund.t.sol
+  - script/
+    - DeployBroadcast.s.sol     # Foundry broadcast script used by `forge script ... --broadcast`
+  - foundry.toml
+  - out/                       # compiled artifacts
+  - broadcast/                 # forge broadcast outputs
+
+- web/
+  - package.json
+  - vite.config.js
+  - index.html
+  - src/
+    - main.jsx
+    - App.jsx
+    - contracts/
+      - addresses.json         # chain-scoped addresses (keys = chainId)
+      - IOUNFT.json            # compiled ABI(s)
+    - pages/
+      - CreateIOU.jsx
+      - Marketplace.jsx
+      - IOUDetail.jsx
+      - DAO.jsx
+      - Treasury.jsx
+  - scripts/
+    - demo-interaction.js      # Node script to simulate mint→accept→settle using local provider
+
+- scripts/
+  - deploy-and-sync.js         # orchestrates `forge` deploy and runs `scripts/sync-contracts.js`
+  - sync-contracts.js          # copies ABIs and writes web/src/contracts/addresses.json by chain id
+
+Implementation notes:
+- `IOUNFT.sol` is the single ERC-721 core contract used for IOU NFTs.
+- `ReputationLedger.sol` stores CurrentRep, LifetimeRep, LockedRep and handles reputation updates.
+- `Treasury.sol` receives fee revenue and funds DAO grants.
+- `SDGsDAO.sol` reads voting power from `ReputationLedger.sol`.
+- `scripts/deploy-and-sync.js` runs the Foundry deploy script and then updates the frontend ABIs/addresses.
+- `scripts/sync-contracts.js` writes a chain-scoped `addresses.json` so the frontend selects the correct addresses for the connected chain (e.g. `31337`).
+
