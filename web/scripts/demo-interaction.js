@@ -1,4 +1,3 @@
-//此腳本待修正
 import fs from 'fs';
 import { ethers } from 'ethers';
 

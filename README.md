@@ -20,28 +20,27 @@ Local quick deploy (recommended)
 anvil --port 8545 --chain-id 31337
 ```
 
-2. From the repository root run the orchestrator which deploys contracts using Foundry then syncs ABIs & addresses to the frontend:
+2. Export a private key from the anvil accounts (use one of anvil's keys) and set it in env:
+
+```bash
+# On Windows PowerShell
+$env:PRIVATE_KEY = '0x<private_key_here>'
+$env:RPC_URL = 'http://127.0.0.1:8545'
+
+# On Unix
+export PRIVATE_KEY=0x<private_key_here>
+export RPC_URL=http://127.0.0.1:8545
+```
+
+3. Run the deploy + sync helper:
 
 ```bash
 node scripts/deploy-and-sync.js
 ```
 
-This script runs the necessary `forge` script under `solidity/` and updates `web/src/contracts/addresses.json` and the ABI files in `web/src/contracts/` for the active chain.
-
-Manual Foundry deploy (alternative)
-----------------------------------
-If you prefer to run Foundry directly:
-
-```bash
-cd solidity
-forge script script/DeployBroadcast.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
-```
-
-After a manual `forge` deploy, run the sync step to update the frontend:
-
-```bash
-node scripts/sync-contracts.js
-```
+What this does:
+- Runs `forge script` to deploy `ReputationLedger`, `Treasury`, `IOUNFT`, and `SDGsDAO` and writes broadcast artifacts to `solidity/broadcast`.
+- Runs `scripts/sync-contracts.js` to copy ABIs and generate `web/src/contracts/addresses.json`.
 
 Start frontend
 --------------

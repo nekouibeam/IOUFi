@@ -7,11 +7,17 @@ import SDGsDAOAbi from '../contracts/SDGsDAO.json';
 
 export { addressesByChain };
 
+function normalizeAbi(artifact) {
+  if (Array.isArray(artifact)) return artifact;
+  if (artifact && Array.isArray(artifact.abi)) return artifact.abi;
+  return [];
+}
+
 const abiByName = {
-  IOUNFT: IOUNFTAbi,
-  ReputationLedger: ReputationLedgerAbi,
-  Treasury: TreasuryAbi,
-  SDGsDAO: SDGsDAOAbi,
+  IOUNFT: normalizeAbi(IOUNFTAbi),
+  ReputationLedger: normalizeAbi(ReputationLedgerAbi),
+  Treasury: normalizeAbi(TreasuryAbi),
+  SDGsDAO: normalizeAbi(SDGsDAOAbi),
 };
 
 async function getAddresses() {
