@@ -21,6 +21,8 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         State state;
         uint256 createdAt;
         uint256 deadline;
+        string description;
+        string serviceType;
         uint256 lifetimeRepReward;
         bool transferable;
         bool unhappyClose;
@@ -64,8 +66,9 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         marketplaceFeeBps = feeBps;
     }
 
-    function mintIOU(address fulfiller, uint256 deadline, bool transferable, uint256 lifetimeRepReward) external payable returns (uint256 tokenId) {
+    function mintIOU(address fulfiller, uint256 deadline, bool transferable, uint256 lifetimeRepReward, string calldata description, string calldata serviceType) external payable returns (uint256 tokenId) {
         require(deadline > block.timestamp, "IOUNFT: invalid deadline");
+        require(bytes(description).length > 0, "IOUNFT: description required");
         tokenId = nextTokenId++;
 
         _mint(msg.sender, tokenId);
@@ -76,6 +79,8 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             state: State.Pending,
             createdAt: block.timestamp,
             deadline: deadline,
+            description: description,
+            serviceType: serviceType,
             lifetimeRepReward: lifetimeRepReward,
             transferable: transferable,
             unhappyClose: false

@@ -16,7 +16,7 @@ export default function CreateIOU() {
     description: '',
     value: '',
     date: new Date().toISOString().slice(0, 10),
-    note: '',
+    serviceType: '',
   });
   const [errors, setErrors] = useState({});
   const [confirmed, setConfirmed] = useState(false);
@@ -63,6 +63,8 @@ export default function CreateIOU() {
         transferable: true,
         lifetimeRepReward: Number(form.value) || 0,
         valueEth: '0',
+        description: form.description,
+        serviceType: form.serviceType,
       });
       setTxHash(tx.hash ?? tx.transactionHash ?? String(tx));
       // wait for confirmation
@@ -161,8 +163,8 @@ export default function CreateIOU() {
           </div>
 
           <div className="form-group">
-            <label>NFT 上備註（可選）</label>
-            <input placeholder="例如：Woody 擅長修電腦、烹飪" value={form.note} onChange={handleChange('note')} />
+            <label>指定償還服務類型（可選）</label>
+            <input placeholder="例如：修電腦、搬家、UI 設計" value={form.serviceType} onChange={handleChange('serviceType')} />
           </div>
 
           <div style={{ marginTop: 8, padding: 12, background: 'var(--bg)', borderRadius: 6, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
@@ -174,7 +176,7 @@ export default function CreateIOU() {
           {errors.submit ? <div className="alert warn">{errors.submit}</div> : null}
           <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
             <button className="btn primary" type="submit" disabled={busy}>{busy ? '發送中…' : '確認發放'}</button>
-            <button className="btn" type="button" onClick={() => setForm({ ...form, description: '', value: '', note: '' })} disabled={busy}>取消</button>
+            <button className="btn" type="button" onClick={() => setForm({ ...form, description: '', value: '', serviceType: '' })} disabled={busy}>取消</button>
           </div>
           {txHash ? <div style={{ marginTop: 8 }} className="muted">交易: <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noreferrer" className="mono">{txHash}</a></div> : null}
         </form>
@@ -190,7 +192,7 @@ export default function CreateIOU() {
               <div className="nft-meta">
                 <span className="tag">{form.date}</span>
                 <span className="tag green">有效</span>
-                {form.note ? <span className="tag">{form.note}</span> : null}
+                {form.serviceType ? <span className="tag">{form.serviceType}</span> : null}
                 <span className="tag">{form.fulfiller}</span>
               </div>
             </div>

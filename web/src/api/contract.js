@@ -62,10 +62,10 @@ export async function getContract(name) {
   return new ethers.Contract(addr, abi, signer);
 }
 
-export async function mintIOU({ fulfiller, deadlineTs, transferable = false, lifetimeRepReward = 0, valueEth = '0' }) {
+export async function mintIOU({ fulfiller, deadlineTs, transferable = false, lifetimeRepReward = 0, valueEth = '0', description = '', serviceType = '' }) {
   const c = await getContract('IOUNFT');
   const value = valueEth && valueEth !== '0' ? ethers.parseEther(valueEth) : 0n;
-  return c.mintIOU(fulfiller, BigInt(deadlineTs), transferable, BigInt(lifetimeRepReward), { value });
+  return c.mintIOU(fulfiller, BigInt(deadlineTs), transferable, BigInt(lifetimeRepReward), description, serviceType, { value });
 }
 
 export async function acceptIOU(tokenId) {
