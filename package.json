@@ -1,0 +1,9 @@
+{
+  "name": "ioufi-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "web:install": "cd web && npm install",
+    "web:dev": "cd web && npm run dev"
+  }
+}

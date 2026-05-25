@@ -1,175 +1,170 @@
-:root {
-  color-scheme: dark;
-  --bg: #07111f;
-  --bg-soft: #0d1b2d;
-  --panel: rgba(10, 18, 32, 0.78);
-  --panel-strong: rgba(14, 24, 42, 0.94);
-  --line: rgba(163, 188, 255, 0.18);
-  --text: #eef4ff;
-  --muted: #a5b6d1;
-  --accent: #7ce0c3;
-  --accent-2: #89a7ff;
-  --danger: #ff7a90;
-  --shadow: 0 24px 64px rgba(0, 0, 0, 0.34);
-  --radius: 22px;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
+/* Copied and adapted from Reference/ioufi我覺得比較好的版本.html */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
 
-* {
-  box-sizing: border-box;
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#F7F5F0;--surface:#FFFFFF;--border:#E2DDD5;--border2:#C8C2B8;
+  --text:#1A1814;--muted:#6B665E;--accent:#2D6A4F;--accent-bg:#E8F4F0;
+  --warn:#B5451B;--warn-bg:#FAEAE3;--info:#1A4A8A;--info-bg:#E6EEFA;
+  --tag-bg:#F0EDE8;
 }
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+  a{color:inherit;text-decoration:none}
 
-html,
-body,
-#root {
-  min-height: 100%;
-}
+  /* Layout */
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:200px;background:var(--surface);border-right:1px solid var(--border);padding:0;flex-shrink:0;position:fixed;top:0;bottom:0;display:flex;flex-direction:column}
+  .main{margin-left:200px;flex:1;padding:28px 32px;max-width:960px}
 
-body {
-  margin: 0;
-  color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(124, 224, 195, 0.18), transparent 32%),
-    radial-gradient(circle at top right, rgba(137, 167, 255, 0.18), transparent 28%),
-    linear-gradient(180deg, #05101d 0%, var(--bg) 50%, #03070f 100%);
-}
+  /* Sidebar */
+  .logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+  .logo-name{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;letter-spacing:-0.5px}
+  .logo-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .nav{padding:8px 0;flex:1}
+  .nav-section{padding:10px 18px 4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+  .nav-item{display:flex;align-items:center;gap:8px;padding:8px 18px;cursor:pointer;color:var(--muted);font-size:13px;transition:all .15s;border-left:2px solid transparent}
+  .nav-item:hover{color:var(--text);background:#F7F5F0}
+  .nav-item.active{color:var(--accent);background:var(--accent-bg);border-left-color:var(--accent)}
+  .nav-item .icon{width:16px;text-align:center;font-size:16px}
+  .treasury-bar{padding:14px 18px;border-top:1px solid var(--border);background:#F7F5F0}
+  .treasury-label{font-size:11px;color:var(--muted);margin-bottom:3px}
+  .treasury-val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;color:var(--accent)}
 
-button,
-input,
-select {
-  font: inherit;
-}
+  /* Common */
+  .page{display:none}
+  .page.active{display:block}
+  .page-title{font-size:20px;font-weight:500;margin-bottom:4px}
+  .page-sub{color:var(--muted);font-size:13px;margin-bottom:24px}
 
-button {
-  border: 0;
-  border-radius: 14px;
-  padding: 0.9rem 1rem;
-  color: #06111e;
-  background: linear-gradient(135deg, var(--accent), #c0ffe7);
-  cursor: pointer;
-  transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
-  font-weight: 700;
-}
+  /* Stat row */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+  .stat-val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500}
+  .stat-val.up{color:var(--accent)}
+  .stat-val.down{color:var(--warn)}
 
-button:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.03);
-}
+  /* Cards */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+  .card-title{font-size:15px;font-weight:500;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .section-title{font-size:13px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
 
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-  transform: none;
-}
+  /* NFT card */
+  .nft-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .nft-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;position:relative}
+  .nft-card.highlight{border-color:var(--accent);background:var(--accent-bg)}
+  .nft-id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:8px}
+  .nft-parties{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;margin-bottom:8px}
+  .nft-arrow{color:var(--muted);font-size:16px}
+  .nft-amount{font-family:'IBM Plex Mono',monospace;font-size:18px;color:var(--accent);font-weight:500;margin-bottom:6px}
+  .nft-desc{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+  .nft-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;background:var(--tag-bg);color:var(--muted);font-family:'IBM Plex Mono',monospace}
+  .tag.green{background:var(--accent-bg);color:var(--accent)}
+  .tag.red{background:var(--warn-bg);color:var(--warn)}
+  .tag.blue{background:var(--info-bg);color:var(--info)}
+  .nft-actions{display:flex;gap:8px;margin-top:12px}
 
-button.secondary {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--line);
-}
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all .15s;font-weight:400}
+  .btn:hover{background:var(--bg);border-color:var(--text)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{background:#235C42}
+  .btn.danger{background:var(--warn);color:#fff;border-color:var(--warn)}
+  .btn.sm{padding:5px 11px;font-size:12px}
+  .btn.full{width:100%;justify-content:center}
 
-button.ghost {
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--line);
-}
+  /* Form */
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .form-group{margin-bottom:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select,textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;background:var(--surface);color:var(--text);outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:70px}
 
-input,
-select {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
-  padding: 0.85rem 0.95rem;
-  outline: none;
-}
+  /* Table */
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--border)}
+  td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--bg)}
 
-input::placeholder {
-  color: #7f91ad;
-}
+  /* Avatar */
+  .avatar{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0}
+  .avatar.andy{background:#E6EEFA;color:#1A4A8A}
+  .avatar.woody{background:#E8F4F0;color:#2D6A4F}
+  .avatar.amy{background:#FAEAE3;color:#B5451B}
+  .avatar.kevin{background:#F5F0FA;color:#6A3DAF}
 
-input:focus,
-select:focus {
-  border-color: rgba(124, 224, 195, 0.7);
-  box-shadow: 0 0 0 3px rgba(124, 224, 195, 0.12);
-}
+  /* User row */
+  .user-row{display:flex;align-items:center;gap:10px}
 
-main.app-shell {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 28px 20px 44px;
-}
+  /* Alert / Toast */
+  .alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;border-left:3px solid}
+  .alert.success{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+  .alert.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+  .alert.info{background:var(--info-bg);border-color:var(--info);color:var(--info)}
 
-.hero {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 18px;
-  align-items: stretch;
-}
+  /* Vote bar */
+  .vote-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:6px 0}
+  .vote-fill{height:100%;background:var(--accent);border-radius:3px}
 
-.hero-card,
-.panel,
-.stat-card,
-.contract-card,
-.tx-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(20px);
-}
+  /* Tabs */
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+  .tab{padding:10px 18px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+  .tab-content{display:none}
+  .tab-content.active{display:block}
 
-.hero-card {
-  border-radius: 30px;
-  padding: 30px;
-  overflow: hidden;
-  position: relative;
-}
+  /* Scores */
+  .score-pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-family:'IBM Plex Mono',monospace}
 
-.hero-card::after {
-  content: '';
-  position: absolute;
-  inset: auto -60px -80px auto;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124, 224, 195, 0.26), transparent 65%);
-  pointer-events: none;
-}
+  /* Profile card */
+  .profile-header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+  .profile-avatar{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500}
+  .profile-skills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.75rem;
-  border-radius: 999px;
-  background: rgba(124, 224, 195, 0.08);
-  color: var(--accent);
-  border: 1px solid rgba(124, 224, 195, 0.18);
-  font-size: 0.88rem;
-  letter-spacing: 0.02em;
-}
+  /* Progress ring placeholder */
+  .rep-score{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:500}
 
-.hero h1 {
-  margin: 16px 0 12px;
-  font-size: clamp(2.3rem, 5vw, 4.6rem);
-  line-height: 0.95;
-  letter-spacing: -0.05em;
-}
+  /* Two col */
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.two-col{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}.sidebar{display:none}.main{margin-left:0}}
 
-.hero p {
-  margin: 0;
-  max-width: 68ch;
-  color: var(--muted);
-  line-height: 1.6;
-}
+  /* Bankruptcy badge */
+  .bankrupt-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:4px;background:var(--warn-bg);color:var(--warn);font-size:12px;font-weight:500;border:1px solid #F0C4B0}
 
-.hero-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 22px;
-}
+  /* Timeline */
+  .timeline{list-style:none}
+  .timeline li{position:relative;padding:0 0 16px 24px;font-size:13px;color:var(--muted);line-height:1.5}
+  .timeline li::before{content:'';position:absolute;left:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--border2)}
+  .timeline li.done::before{background:var(--accent)}
+  .timeline li strong{color:var(--text)}
+
+  /* Modal overlay simulation */
+  .modal-overlay{background:rgba(26,24,20,.45);border-radius:12px;padding:40px 20px;display:flex;align-items:center;justify-content:center;min-height:320px;margin-bottom:16px}
+  .modal{background:var(--surface);border-radius:10px;padding:24px;width:100%;max-width:400px;border:1px solid var(--border)}
+  .modal-title{font-size:16px;font-weight:500;margin-bottom:4px}
+  .modal-sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+
+  /* Step indicator */
+  .steps{display:flex;gap:0;margin-bottom:24px}
+  .step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .step-num{width:22px;height:22px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px}
+  .step.active .step-num{background:var(--accent);border-color:var(--accent);color:#fff}
+  .step.done .step-num{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+  .step-line{flex:1;height:1px;background:var(--border);margin:0 4px}
+
+  /* Compact list */
+  .item-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+  .item-row:last-child{border-bottom:none}
+  .item-left{display:flex;align-items:center;gap:10px}
+  .item-right{text-align:right}
+
+  /* Special: bankrupt user row */
+  .bankrupt-row td{color:var(--warn);opacity:.7}
+
 
 .side-stack {
   display: grid;
