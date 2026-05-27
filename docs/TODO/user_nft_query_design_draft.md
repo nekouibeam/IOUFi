@@ -114,28 +114,34 @@ CREATE INDEX idx_tokens_created_at ON tokens(created_at DESC);
 
 ## 建議的資料分類 (前端顯示)
 
-前端取得資料後，依據 `roleMatch` 與合約即時 `state` 分成四類：
+前端取得資料後，依據合約即時 `state` 與角色關係分成四類。
+規則優先順序如下：
+
+### History 優先：若 `state` 為 `Settled` 或 `Cancelled`，一律只進入 History。
+
+**History (歷史紀錄)**
+* 條件：狀態為已結清 (Settled)、已取消 (Cancelled)。
+* 意義：歷史追蹤與信用評價參考。
+* 備註：只要進入 History，就不再重複出現在其他三個區塊。
+
+### Active / Pending 類別：若不是 History，則可依角色同時進入多個區塊。
 
 1. **Created by me (我發出的)**
 * 條件：我是 creator。
 * 意義：我對外發出的人情債。
+* 備註：若同時也是 owner，仍可同時出現在 Owed to me。
 
 
 2. **Owed to me (欠我的)**
-* 條件：我是 fulfiller 或 owner。
-* 意義：別人欠我、且我有權力轉移或要求履行的 IOU。
+* 條件：我是 owner。
+* 意義：我持有該 IOU，並可要求履行或依規則進行轉移。
+* 備註：若同時也是 creator，仍可同時出現在 Created by me。
 
 
 3. **Owed by me (我欠別人的)**
-* 條件：我是 fulfiller，但已不是 owner。
-* 意義：代表這筆 IOU 已被轉手，但我仍是最終需要提供服務的人。
-
-
-4. **History (歷史紀錄)**
-* 條件：狀態為已結清 (Settled)、已取消 (Cancelled)。
-* 意義：歷史追蹤與信用評價參考。
-
-
+* 條件：我是 fulfiller。
+* 意義：我是需要提供服務給 owner 的人。
+* 備註：若同時也是 creator 或 owner，仍可同時出現在對應區塊。
 
 ## 前端實作流程與 UX 設計
 

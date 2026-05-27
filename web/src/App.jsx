@@ -7,6 +7,7 @@ import Marketplace from './pages/Marketplace';
 import IOUDetail from './pages/IOUDetail';
 import DAO from './pages/DAO';
 import Treasury from './pages/Treasury';
+import UserIous from './pages/UserIous';
 import Layout from './components/Layout';
 import './styles.css';
 
@@ -346,6 +347,7 @@ export default function App() {
           <Route path="/create" element={<CreateIOU />} />
           <Route path="/market" element={<Marketplace />} />
           <Route path="/detail" element={<IOUDetail />} />
+          <Route path="/ious" element={<UserIous />} />
           <Route path="/dao" element={<DAO />} />
           <Route path="/treasury" element={<Treasury />} />
         </Routes>

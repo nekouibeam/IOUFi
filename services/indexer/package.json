@@ -1,0 +1,16 @@
+{
+  "name": "ioufi-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "backfill": "node backfill.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^8.0.0",
+    "dotenv": "^16.0.0",
+    "ethers": "^6.0.0"
+  }
+}
