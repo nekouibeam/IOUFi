@@ -31,65 +31,107 @@
 - 沒有 `getIOUsByOwner(address)`
 - 沒有事件索引層來快速查地址相關的 token
 
-## 建議的查詢架構
+## 方案 A（鏈下索引 + 鏈上單筆讀取）
 
-### 方案 A：鏈下索引 + 鏈上單筆讀取
+本草案以方案 A 為主：
 
-這是目前最實際、最容易擴充的做法。
+- 搜尋、過濾、排序交給鏈下索引器
+- 鏈上保留權威狀態與單筆查詢
+- 前端負責組裝結果與顯示
 
-#### 做法
+### 系統分工
 
-1. 前端或索引服務先掃描 `IOUCreated`, `IOUAccepted`, `IOUSettled`, `IOURefunded` 等事件。
-2. 用事件資料建立一個「地址 → tokenId 清單」的索引。
-3. 使用者輸入地址後，先從索引拿 tokenId list。
-4. 再用 `getIOU(tokenId)` 或 `ious(tokenId)` 補齊詳細資料。
+1. 鏈上合約（On-chain）
+   - 儲存 IOU 的真實狀態（`ious(tokenId)` / `getIOU(tokenId)`）
+   - 在狀態變更時發送事件（至少包含 `IOUCreated`, `IOUAccepted`, `IOUSettled`, `IOURefunded`）
+   - 若要正確追蹤目前持有人，索引器還需監聽 ERC721 `Transfer` 事件
 
-#### 優點
+2. 鏈下索引服務（Off-chain Indexer）
+   - 長期監聽區塊與事件
+   - 維護地址與 token 的關聯資料庫
+   - 提供查詢 API（REST 或 GraphQL）給前端
 
-- 不需要修改 ERC-721 核心設計。
-- 可以支援歷史資料與多條件篩選。
-- 速度比單純鏈上遍歷好。
+3. 前端（Frontend）
+   - 以地址向索引器查 tokenId 清單
+   - 依需求補打鏈上 `getIOU(tokenId)` 做權威驗證
+   - 將資料分組呈現（我發出的、欠我的、我欠別人的、歷史）
 
-#### 缺點
+### 實際運作流程
 
-- 需要額外索引層。
-- 若只靠前端掃事件，資料量大時會慢。
+#### 階段一：背景同步（持續執行）
 
-### 方案 B：合約新增地址查詢函式
+1. 合約在每次 IOU 狀態變更時寫入事件 Log。
+2. 索引器消費事件，更新資料庫。
+3. 索引器建立關聯：
+   - `creator -> tokenId`
+   - `fulfiller -> tokenId`
+   - `owner -> tokenId`（透過 `Transfer`）
+4. 索引器記錄可追蹤欄位：`blockNumber`, `txHash`, `logIndex`, `updatedAt`，用於去重與排序。
 
-如果想把查詢能力直接放在鏈上，可以加 helper functions。
+#### 階段二：即時查詢（使用者操作）
 
-#### 可考慮新增
+1. 使用者輸入地址。
+2. 前端向索引器查詢該地址的 tokenId 清單（可附帶狀態、分頁、排序條件）。
+3. 前端拿到 tokenId 陣列後，批次呼叫鏈上 `getIOU(tokenId)`（建議批次/分頁，不要一次全打）。
+4. 前端依欄位 `creator`, `fulfiller`, `state` 分類後渲染。
 
-- `getIOUsByCreator(address account)`
-- `getIOUsByFulfiller(address account)`
-- `getIOUsByParty(address account)`
-- `getIOUsByStatus(address account, State state)`
+### 為什麼方案 A 適合目前專案
 
-#### 優點
+- 合約不用新增複雜迴圈與索引映射，降低 Gas 與安全風險。
+- 查詢可以做分頁、關鍵字、狀態篩選，不消耗鏈上資源。
+- 即使未來 token 量增長，查詢壓力主要在鏈下資料庫，而非鏈上合約。
 
-- 前端可以直接呼叫。
-- 不必先寫完整索引服務。
+### 一致性策略（建議）
 
-#### 缺點
+- 快速模式：先顯示索引器結果，再背景以 `getIOU(tokenId)` 校驗。
+- 嚴謹模式：重要畫面（例如結算前確認）以鏈上資料為最終準則。
+- 索引器延遲：若發現剛發生的交易尚未被索引，前端顯示「同步中」提示。
 
-- 合約要維護額外陣列或索引映射。
-- 若 token 數量成長，on-chain 掃描成本會上升。
-- 目前 `IOUNFT` 沒有 Enumerable，所以不能直接用 owner 查完整列表。
+### 索引器最小資料表（建議）
 
-### 方案 C：使用 ERC721Enumerable
+```sql
+-- token 主表
+tokens(
+  token_id bigint primary key,
+  creator text,
+  fulfiller text,
+  owner text,
+  state smallint,
+  created_at bigint,
+  deadline bigint,
+  updated_at timestamptz,
+  last_block bigint,
+  last_tx_hash text,
+  last_log_index integer
+)
 
-如果要支援「某地址目前持有哪些 token」這種持有者視圖，最標準的方法是改成 Enumerable 版本。
+-- 地址關聯表（可多角色）
+address_token_relations(
+  account text,
+  token_id bigint,
+  role text, -- creator | fulfiller | owner | historical_party
+  updated_at timestamptz,
+  primary key(account, token_id, role)
+)
+```
 
-#### 優點
+### 索引器查詢 API（建議）
 
-- 可直接查某地址的持有 token。
-- 適合做「我的 NFT」頁面。
+```http
+GET /api/users/:address/ious?roles=creator,fulfiller,owner&states=0,1,2,3&page=1&pageSize=20
+```
 
-#### 缺點
+回傳範例：
 
-- 需要改動合約繼承與部署。
-- 仍然不夠回答「歷史上與我有關」這個問題，因為它只看現在持有狀態。
+```json
+{
+  "account": "0x...",
+  "tokenIds": [1, 5, 12, 45],
+  "total": 4,
+  "page": 1,
+  "pageSize": 20
+}
+```
 
 ## 建議的資料分類
 
