@@ -9,15 +9,13 @@ export function buildTokenView(row, enriched) {
   const displayedState = chain?.state ?? row.state;
   const displayedDescription = chain?.description ?? row.description ?? '—';
   const displayedServiceType = chain?.serviceType ?? chain?.service_type ?? row.service_type ?? '—';
-  const syncing = String(row.state) !== String(displayedState)
-    || (row.description || null) !== (displayedDescription === '—' ? null : displayedDescription)
-    || (row.service_type || null) !== (displayedServiceType === '—' ? null : displayedServiceType);
+  const syncing = String(row.state) !== String(displayedState);
 
   return {
     tokenId: row.token_id,
     creator: normalizeAddress(row.creator),
     fulfiller: normalizeAddress(row.fulfiller),
-    owner: normalizeAddress(row.owner),
+    owner: normalizeAddress(chain?.owner ?? row.owner),
     state: displayedState,
     description: displayedDescription,
     serviceType: displayedServiceType,

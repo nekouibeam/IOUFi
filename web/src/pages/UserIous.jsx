@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import { getUserIOUs, enrichWithOnChainData } from '../api/userIous';
+import { getReadProvider } from '../api/contract';
+import addressesByChain from '../contracts/addresses.json';
 import { buildSections, normalizeAddress } from '../lib/userIousGrouping';
 import IOUNFTArtifact from '../contracts/IOUNFT.json';
 
@@ -9,7 +11,7 @@ const SECTION_ORDER = [
   { key: 'created', title: 'Created by me', subtitle: '我發出的 IOU', empty: '沒有你作為 creator 的進行中 IOU。' },
   { key: 'owedToMe', title: 'Owed to me', subtitle: '我持有、可要求履約或轉移的 IOU', empty: '沒有你作為 owner 的進行中 IOU。' },
   { key: 'owedByMe', title: 'Owed by me', subtitle: '我需要提供服務的 IOU', empty: '沒有你作為 fulfiller 的進行中 IOU。' },
-  { key: 'history', title: 'History', subtitle: '已結清 / 已取消的歷史紀錄', empty: '沒有歷史紀錄。' },
+  { key: 'history', title: 'History', subtitle: '已結清 / 已取消的歷史紀錄（優先顯示）', empty: '沒有歷史紀錄。' },
 ];
 
 function SkeletonCard() {
@@ -128,12 +130,16 @@ export default function UserIous() {
       if (!rows.length) return;
 
       const tokenIds = rows.map((row) => row.token_id).filter((id) => id !== undefined && id !== null);
-      const contractAddress = import.meta.env.VITE_IOUNFT_ADDRESS || window.__IOUNFT_ADDRESS__ || '';
+      const readProvider = await getReadProvider();
+      const network = await readProvider.getNetwork();
+      const contractAddress = addressesByChain?.[String(network.chainId)]?.IOUNFT
+        || import.meta.env.VITE_IOUNFT_ADDRESS
+        || window.__IOUNFT_ADDRESS__
+        || '';
       if (!contractAddress) return;
 
       setEnrichmentLoading(true);
-      const provider = window.ethereum ? new ethers.BrowserProvider(window.ethereum) : new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-      const chainMap = await enrichWithOnChainData(provider, IOU_ABI, contractAddress, tokenIds);
+      const chainMap = await enrichWithOnChainData(readProvider, IOU_ABI, contractAddress, tokenIds);
       setEnriched(chainMap || {});
     } catch (err) {
       setError(err.message || String(err));
@@ -152,8 +158,8 @@ export default function UserIous() {
           <span className="eyebrow">Address query · off-chain index + on-chain verification</span>
           <h1>查詢與你有關的 IOU，並按角色自動分組。</h1>
           <p>
-            僅歷史狀態會進入 History。Pending / Active 的 token 可以同時出現在多個區塊，
-            例如同時是 creator 和 owner 時，會同時列入 Created by me 與 Owed to me。
+            History 具有最高優先序，若狀態為 Settled 或 Cancelled，只會出現在 History。
+            Pending / Active 的 token 則可依角色同時出現在 Created by me、Owed to me、Owed by me。
           </p>
           <div className="status-row">
             <span className={`badge ${loading ? 'warn' : 'ok'}`}>{loading ? 'Fetching indexer results...' : 'Indexer ready'}</span>
@@ -176,7 +182,7 @@ export default function UserIous() {
             <button type="submit" className="btn primary" disabled={loading || enrichmentLoading}>Search</button>
           </div>
           <div className="helper-text">
-            Results will be grouped into <strong>Created by me</strong>, <strong>Owed to me</strong>, <strong>Owed by me</strong>, and <strong>History</strong>.
+            Results are grouped as <strong>Created by me</strong>, <strong>Owed to me</strong>, <strong>Owed by me</strong>, and <strong>History</strong>. History is exclusive.
           </div>
           {error ? <div className="alert warn" style={{ marginTop: 12 }}>{error}</div> : null}
         </form>
@@ -197,7 +203,7 @@ export default function UserIous() {
             <div className="summary-value">{sections.history.length}</div>
           </div>
           <div className="summary-card">
-            <div className="summary-label">Active matches</div>
+            <div className="summary-label">Active / Pending matches</div>
             <div className="summary-value">{sections.created.length + sections.owedToMe.length + sections.owedByMe.length}</div>
           </div>
         </div>

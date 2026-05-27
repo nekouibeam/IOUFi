@@ -1,3 +1,5 @@
+import { Contract } from 'ethers';
+
 // Frontend helper stubs for user IOU queries
 export async function getUserIOUs(address, options = {}) {
   const params = new URLSearchParams();
@@ -21,6 +23,7 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
   // uses multicall wrapper (fallback to batched RPC calls)
   const multicall = await import('./multicall');
   const raw = await multicall.default(provider, iouAbi, contractAddress, tokenIds, opts);
+  const contract = new Contract(contractAddress, iouAbi, provider);
   // normalize results to a map tokenId -> full IOU view
   const map = {};
   for (const id of tokenIds) {
@@ -41,6 +44,13 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
       transferable: r.transferable !== undefined ? r.transferable : r[9],
       unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[10],
     };
+
+    try {
+      normalized.owner = await contract.ownerOf(BigInt(id));
+    } catch (_) {
+      normalized.owner = null;
+    }
+
     map[id] = normalized;
   }
   return map;

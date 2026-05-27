@@ -1,0 +1,4 @@
+- bounty IOU 上架 Favor市場、在Favor市場 承接 bounty IOU
+- 查詢頁面要能分辨 social 還是 bounty
+- 查詢頁面選擇 social or bounty IOU 來結案
+- DAO 提案發起、投票、Treasury 撥款
