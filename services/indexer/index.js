@@ -48,7 +48,7 @@ function migrateSchema() {
 
 migrateSchema();
 
-const CONFIRMATIONS = parseInt(process.env.CONFIRMATIONS || '2', 10);
+const CONFIRMATIONS = parseInt(process.env.CONFIRMATIONS || '0', 10);
 
 // Prepared statements
 function prepare(sql) {
@@ -108,8 +108,11 @@ const deleteProcessedEventsGtBlock = prepare(`DELETE FROM processed_events WHERE
 const selectAllProcessedEventsOrdered = prepare(`SELECT event_name, event_data FROM processed_events ORDER BY block_number, log_index`);
 const insertOrReplaceLastSync = prepare(`INSERT OR REPLACE INTO last_sync(id, last_block) VALUES(1, @last_block)`);
 const selectLastSync = prepare(`SELECT last_block FROM last_sync WHERE id=1`);
+const countTokensStmt = prepare(`SELECT COUNT(1) AS total FROM tokens`);
 
 const contract = IOUNFT_ADDRESS ? new ethers.Contract(IOUNFT_ADDRESS, IOUNFT_ABI, provider) : null;
+let syncTimer = null;
+let syncInFlight = false;
 
 console.log('Indexer starting', { RPC, IOUNFT_ADDRESS, DB_PATH, CONFIRMATIONS });
 
@@ -117,6 +120,54 @@ function serializeEventData(obj) {
   try { return JSON.stringify(obj); } catch (e) { return null; }
 }
 
+function safeNumber(value) {
+  if (value === null || value === undefined) return null;
+  try {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function extractEventMeta(event) {
+  const txHash = event?.transactionHash || event?.log?.transactionHash || event?.hash || null;
+  const logIndex = safeNumber(event?.logIndex ?? event?.log?.index ?? event?.index);
+  const blockNumber = safeNumber(event?.blockNumber ?? event?.log?.blockNumber);
+  return { txHash, logIndex, blockNumber };
+}
+
+async function replayEventsInRange(fromBlock, toBlock) {
+  if (!contract || fromBlock > toBlock) return;
+
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'ReputationAwarded', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  for (const eventName of eventNames) {
+    const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
+    for (const log of logs) {
+      try {
+        if (eventName === 'Transfer') {
+          await processEventIfConfirmed('Transfer', { from: log.args?.from, to: log.args?.to, tokenId: log.args?.tokenId }, log);
+        } else if (eventName === 'IOUCreated') {
+          await processEventIfConfirmed('IOUCreated', { tokenId: log.args?.tokenId, creator: log.args?.creator, fulfiller: log.args?.fulfiller, collateral: log.args?.collateral }, log);
+        } else if (eventName === 'IOUAccepted') {
+          await processEventIfConfirmed('IOUAccepted', { tokenId: log.args?.tokenId, fulfiller: log.args?.fulfiller }, log);
+        } else if (eventName === 'IOUSettled') {
+          await processEventIfConfirmed('IOUSettled', { tokenId: log.args?.tokenId, fee: log.args?.fee, payout: log.args?.payout }, log);
+        } else if (eventName === 'IOURefunded') {
+          await processEventIfConfirmed('IOURefunded', { tokenId: log.args?.tokenId, amount: log.args?.amount }, log);
+        } else if (eventName === 'ReputationAwarded') {
+          await processEventIfConfirmed('ReputationAwarded', { tokenId: log.args?.tokenId, account: log.args?.account, amount: log.args?.amount }, log);
+        } else if (eventName === 'TreasuryUpdated') {
+          await processEventIfConfirmed('TreasuryUpdated', { treasury: log.args?.treasury }, log);
+        } else if (eventName === 'ReputationLedgerUpdated') {
+          await processEventIfConfirmed('ReputationLedgerUpdated', { reputationLedger: log.args?.reputationLedger }, log);
+        }
+      } catch (err) {
+        console.error(`replayEventsInRange error for ${eventName}`, err);
+      }
+    }
+  }
+}
 function normalizeIOUSnapshot(result) {
   return {
     creator: result.creator || result[0] || null,
@@ -207,34 +258,57 @@ function rebuildTokensFromProcessedEvents() {
 
 async function reconcileOnStartup() {
   try {
+    await syncFromChain('startup');
+  } catch (err) {
+    console.error('reconcileOnStartup error', err);
+  }
+}
+
+async function syncFromChain(source = 'poll') {
+  if (!contract || syncInFlight) return;
+
+  syncInFlight = true;
+  try {
     const last = selectLastSync.get();
     const currentBlock = await provider.getBlockNumber();
     const lastBlock = last ? last.last_block : 0;
+    const tokenCountRow = countTokensStmt.get();
+    const tokenCount = tokenCountRow ? Number(tokenCountRow.total || 0) : 0;
+
     if (lastBlock > currentBlock) {
       console.log('Detected possible reorg: last synced block', lastBlock, 'is greater than current chain head', currentBlock);
-      // remove processed events above current head and rebuild tokens
       deleteProcessedEventsGtBlock.run({ block: currentBlock });
       rebuildTokensFromProcessedEvents();
+      insertOrReplaceLastSync.run({ last_block: currentBlock });
+      return;
     }
+
+    const replayFrom = tokenCount === 0 ? 0 : lastBlock + 1;
+    const replayTo = currentBlock - CONFIRMATIONS;
+    if (replayFrom <= replayTo) {
+      console.log(source === 'startup' && tokenCount === 0 ? 'Rebuilding index from chain logs' : 'Syncing missed events', { replayFrom, replayTo });
+      await replayEventsInRange(replayFrom, replayTo);
+    }
+
     insertOrReplaceLastSync.run({ last_block: currentBlock });
-  } catch (err) {
-    console.error('reconcileOnStartup error', err);
+  } finally {
+    syncInFlight = false;
   }
 }
 
 async function processEventIfConfirmed(eventName, args, event) {
   try {
     const currentBlock = await provider.getBlockNumber();
-    const blockNumber = Number(event.blockNumber || event.blockNumber === 0 ? event.blockNumber : event.blockNumber);
+    const { txHash, logIndex, blockNumber } = extractEventMeta(event);
+    if (blockNumber === null) {
+      throw new Error('Missing block number on event');
+    }
     if (currentBlock < blockNumber + CONFIRMATIONS) {
-      // not enough confirmations yet, retry later
       setTimeout(() => processEventIfConfirmed(eventName, args, event), 5000);
       return;
     }
 
     const tokenId = args.tokenId ? args.tokenId.toString() : (args[2] ? args[2].toString() : null);
-    const txHash = event.transactionHash;
-    const logIndex = event.logIndex;
     const payload = { tokenId, blockNumber, txHash, logIndex, timestamp: Math.floor(Date.now() / 1000) };
     if (eventName === 'Transfer') {
       payload.from = args.from || args[0] || null;
@@ -259,20 +333,14 @@ async function processEventIfConfirmed(eventName, args, event) {
       payload.reputationLedger = args.reputationLedger || args[0] || null;
     }
 
-    // persist processed_events for idempotency
     try {
       insertProcessedEventStmt.run({ tx_hash: txHash, log_index: logIndex, block_number: blockNumber, token_id: tokenId ? Number(tokenId) : null, event_name: eventName, event_data: serializeEventData(payload) });
     } catch (e) {
-      if (e && e.code && e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
-        // duplicate, already processed
-        return;
-      }
-      // sqlite3 error message may differ; treat any error with PRIMARYKEY text as duplicate
+      if (e && e.code && e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') return;
       if (String(e).includes('UNIQUE') || String(e).includes('PRIMARY')) return;
       throw e;
     }
 
-    // apply to tokens table
     applyEventToTokens(eventName, payload);
 
     if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded'].includes(eventName)) {
@@ -288,10 +356,41 @@ async function processEventIfConfirmed(eventName, args, event) {
       }
     }
 
-    // update last sync
     insertOrReplaceLastSync.run({ last_block: blockNumber });
   } catch (err) {
     console.error('processEventIfConfirmed error', err);
+  }
+}
+
+async function replayEventsInRange(fromBlock, toBlock) {
+  if (!contract || fromBlock > toBlock) return;
+
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'ReputationAwarded', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  for (const eventName of eventNames) {
+    const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
+    for (const log of logs) {
+      try {
+        if (eventName === 'Transfer') {
+          await processEventIfConfirmed('Transfer', { from: log.args?.from, to: log.args?.to, tokenId: log.args?.tokenId }, log);
+        } else if (eventName === 'IOUCreated') {
+          await processEventIfConfirmed('IOUCreated', { tokenId: log.args?.tokenId, creator: log.args?.creator, fulfiller: log.args?.fulfiller, collateral: log.args?.collateral }, log);
+        } else if (eventName === 'IOUAccepted') {
+          await processEventIfConfirmed('IOUAccepted', { tokenId: log.args?.tokenId, fulfiller: log.args?.fulfiller }, log);
+        } else if (eventName === 'IOUSettled') {
+          await processEventIfConfirmed('IOUSettled', { tokenId: log.args?.tokenId, fee: log.args?.fee, payout: log.args?.payout }, log);
+        } else if (eventName === 'IOURefunded') {
+          await processEventIfConfirmed('IOURefunded', { tokenId: log.args?.tokenId, amount: log.args?.amount }, log);
+        } else if (eventName === 'ReputationAwarded') {
+          await processEventIfConfirmed('ReputationAwarded', { tokenId: log.args?.tokenId, account: log.args?.account, amount: log.args?.amount }, log);
+        } else if (eventName === 'TreasuryUpdated') {
+          await processEventIfConfirmed('TreasuryUpdated', { treasury: log.args?.treasury }, log);
+        } else if (eventName === 'ReputationLedgerUpdated') {
+          await processEventIfConfirmed('ReputationLedgerUpdated', { reputationLedger: log.args?.reputationLedger }, log);
+        }
+      } catch (err) {
+        console.error(`replayEventsInRange error for ${eventName}`, err);
+      }
+    }
   }
 }
 
@@ -350,6 +449,9 @@ if (contract) {
 
   // perform reconciliation on startup
   reconcileOnStartup();
+  syncTimer = setInterval(() => {
+    syncFromChain('poll').catch((err) => console.error('syncFromChain poll error', err));
+  }, 5000);
 
 } else {
   console.warn('No IOUNFT address provided; indexer started in passive mode. Set IOUNFT_ADDRESS in .env to enable contract listeners.');
@@ -357,6 +459,7 @@ if (contract) {
 
 process.on('SIGINT', () => {
   console.log('Shutting down indexer...');
+  if (syncTimer) clearInterval(syncTimer);
   db.close();
   process.exit(0);
 });

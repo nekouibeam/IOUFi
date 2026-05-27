@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { ethers } from 'ethers';
 import * as api from '../api/contract';
+import IOUNFTArtifact from '../contracts/IOUNFT.json';
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const REWARD_FIXED = 10;
 
 const DEMO_RECIPIENTS = [
   { name: 'Andy', address: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' },
@@ -8,84 +13,112 @@ const DEMO_RECIPIENTS = [
   { name: 'Kevin', address: '0x90f79bf6eb2c4f870365e785982e1f101e93b906' },
 ];
 
+function defaultDeadlineDate() {
+  return new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 export default function CreateIOU() {
+  const [tab, setTab] = useState('social');
   const [form, setForm] = useState({
     fulfiller: '',
-    fulfillerLabel: '',
-    issuer: 'You (@you)',
     description: '',
-    value: '',
-    date: new Date().toISOString().slice(0, 10),
+    deadline: defaultDeadlineDate(),
     serviceType: '',
+    collateralEth: '0.01',
   });
+  const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
-  const [confirmed, setConfirmed] = useState(false);
-  const [issuedTokenId, setIssuedTokenId] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const feeHint = useMemo(() => {
+    if (tab === 'social') return 'Transfer Fee: Social IOU transfer policy';
+    return 'Transfer Fee: Bounty IOU transfer policy';
+  }, [tab]);
+
+  function onField(key) {
+    return (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  }
+
+  function isAddress(value) {
+    return /^0x[a-fA-F0-9]{40}$/.test(value);
+  }
 
   function validate() {
-    const e = {};
-    if (!form.fulfiller) e.fulfiller = '請選擇受讓人';
-    if (form.fulfiller && !/^0x[a-fA-F0-9]{40}$/.test(form.fulfiller)) e.fulfiller = '請選擇有效的以太坊地址';
-    if (!form.description) e.description = '請填寫人情事件描述';
-    if (!form.value || Number(form.value) <= 0) e.value = '請填寫大於 0 的 FAVOR 數值';
-    return e;
-  }
-
-  function handleChange(field) {
-    return (ev) => setForm({ ...form, [field]: ev.target.value });
-  }
-
-  function handleSubmit(ev) {
-    ev.preventDefault();
-    const e = validate();
-    setErrors(e);
-    if (Object.keys(e).length === 0) {
-      // call on-chain mint flow
-      handleMintOnchain();
+    const next = {};
+    if (tab === 'social') {
+      if (!form.fulfiller) next.fulfiller = 'Social IOU 需要指定 fulfiller。';
+      if (form.fulfiller && !isAddress(form.fulfiller)) next.fulfiller = '請輸入有效的 fulfiller 地址。';
+    } else {
+      if (form.fulfiller && !isAddress(form.fulfiller)) next.fulfiller = '請輸入有效的 fulfiller 地址，或留空代表 open marketplace。';
+      if (!form.collateralEth || Number(form.collateralEth) <= 0) next.collateralEth = 'Bounty IOU 需要大於 0 的 collateral。';
     }
+
+    if (!form.description.trim()) next.description = '請填寫事件描述。';
+
+    const deadlineTs = Math.floor(new Date(form.deadline).getTime() / 1000);
+    if (!form.deadline || Number.isNaN(deadlineTs)) {
+      next.deadline = '請輸入有效的 Deadline。';
+    } else if (deadlineTs <= Math.floor(Date.now() / 1000)) {
+      next.deadline = 'Deadline 必須晚於現在時間。';
+    }
+
+    return next;
   }
 
-  // busy and tx state for async flows
-  const [busy, setBusy] = useState(false);
-  const [txHash, setTxHash] = useState('');
+  function extractTokenId(receipt) {
+    try {
+      const abi = Array.isArray(IOUNFTArtifact) ? IOUNFTArtifact : (IOUNFTArtifact.abi || []);
+      const iface = new ethers.Interface(abi);
+      for (const log of receipt.logs || []) {
+        try {
+          const parsed = iface.parseLog(log);
+          if (parsed?.name === 'IOUCreated') {
+            return parsed.args?.tokenId?.toString?.() ?? String(parsed.args?.[0]);
+          }
+        } catch (_) {
+          // ignore non-IOUNFT logs
+        }
+      }
+    } catch (_) {
+      // fallback below
+    }
+    return null;
+  }
 
-  async function handleMintOnchain() {
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const nextErrors = validate();
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
     setBusy(true);
-    setTxHash('');
+    setResult(null);
     try {
       await api.connectWallet();
-      // convert date to unix seconds
-      const deadlineTs = Math.floor(new Date(form.date).getTime() / 1000);
-      // lifetimeRepReward use numeric value field, valueEth left as '0'
+      const deadlineTs = Math.floor(new Date(form.deadline).getTime() / 1000);
+      const fulfiller = tab === 'social' ? form.fulfiller : (form.fulfiller || ZERO_ADDRESS);
+      const valueEth = tab === 'social' ? '0' : form.collateralEth;
+
       const tx = await api.mintIOU({
-        fulfiller: form.fulfiller,
+        fulfiller,
         deadlineTs,
-        transferable: true,
-        lifetimeRepReward: Number(form.value) || 0,
-        valueEth: '0',
+        transferable: false,
+        lifetimeRepReward: REWARD_FIXED,
+        valueEth,
         description: form.description,
         serviceType: form.serviceType,
       });
-      setTxHash(tx.hash ?? tx.transactionHash ?? String(tx));
-      // wait for confirmation
       const receipt = await tx.wait();
-      // try to extract tokenId from Transfer event (if available)
-      let tokenId = null;
-      try {
-        const transferEvent = receipt.events?.find((e) => e.event === 'Transfer' || e.topics?.length === 3);
-        if (transferEvent) {
-          // fallback to decoding: if args exist
-          tokenId = transferEvent.args?.tokenId ?? transferEvent.args?.[2];
-        }
-      } catch (_) {}
-      if (!tokenId) {
-        // fallback to using tx hash as identifier
-        tokenId = `tx:${receipt.transactionHash}`;
-      }
-      setIssuedTokenId(String(tokenId));
-      setConfirmed(true);
+      const tokenId = extractTokenId(receipt);
+
+      setResult({
+        kind: tab,
+        txHash: tx.hash,
+        tokenId: tokenId || `tx:${receipt.transactionHash}`,
+        fulfiller,
+      });
+      setErrors({});
     } catch (err) {
-      console.error('mint failed', err);
       setErrors({ submit: err?.message || String(err) });
     } finally {
       setBusy(false);
@@ -95,110 +128,84 @@ export default function CreateIOU() {
   return (
     <div>
       <div className="page-title">發放人情債 NFT</div>
-      <div className="page-sub">幫助對方後，對方可主動掃碼，或你直接發放給對方</div>
+      <div className="page-sub">Social / Bounty 分頁與合約參數語意對齊（`transferable` 固定 false）。</div>
 
-      <div className="steps">
-        <div className="step active"><div className="step-num">1</div><span>填寫資訊</span></div>
-        <div className="step-line"></div>
-        <div className={`step ${confirmed ? 'done' : ''}`}><div className="step-num">2</div><span>確認發放</span></div>
-        <div className="step-line"></div>
-        <div className={`step ${confirmed ? 'done' : ''}`}><div className="step-num">3</div><span>完成</span></div>
+      <div className="tabs" role="tablist" aria-label="Create IOU Type">
+        <button type="button" className={`tab ${tab === 'social' ? 'active' : ''}`} onClick={() => setTab('social')}>Social IOU</button>
+        <button type="button" className={`tab ${tab === 'bounty' ? 'active' : ''}`} onClick={() => setTab('bounty')}>Bounty IOU</button>
       </div>
 
       <div className="alert info" style={{ marginBottom: 16 }}>
-        已預載 Anvil demo 地址，可直接選擇真實 recipient address 進行 mint。
+        已預載 Anvil demo 地址。Social 需指定 fulfiller；Bounty 留空 fulfiller 代表 open marketplace。
       </div>
 
-      {!confirmed ? (
-        <form className="card" onSubmit={handleSubmit}>
-          <div className="form-row">
-            <div className="form-group">
-              <label>對方帳戶（欠你人情的人）</label>
-              <select
-                value={form.fulfiller}
-                onChange={(ev) => {
-                  const selected = DEMO_RECIPIENTS.find((item) => item.address === ev.target.value);
-                  setForm({
-                    ...form,
-                    fulfiller: ev.target.value,
-                    fulfillerLabel: selected ? `${selected.name} (${selected.address.slice(0, 10)}…)` : '',
-                  });
-                }}
-              >
-                <option value="">-- 選擇地址 --</option>
-                {DEMO_RECIPIENTS.map((recipient) => (
-                  <option key={recipient.address} value={recipient.address}>
-                    {recipient.name} · {recipient.address}
-                  </option>
-                ))}
-              </select>
-              {errors.fulfiller ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.fulfiller}</div> : null}
-              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>
-                選到的是實際地址，不只是名稱標籤。
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>你方帳戶（你）</label>
-              <input value={form.issuer} disabled />
-            </div>
+      <form className="card" onSubmit={handleSubmit}>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Fulfiller 地址 {tab === 'social' ? '（必填）' : '（可留空）'}</label>
+            <select value={form.fulfiller} onChange={onField('fulfiller')}>
+              <option value="">{tab === 'social' ? '-- 選擇 fulfiller --' : '-- 留空代表 open marketplace --'}</option>
+              {DEMO_RECIPIENTS.map((recipient) => (
+                <option key={recipient.address} value={recipient.address}>
+                  {recipient.name} · {recipient.address}
+                </option>
+              ))}
+            </select>
+            {errors.fulfiller ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.fulfiller}</div> : null}
           </div>
 
           <div className="form-group">
-            <label>人情事件描述</label>
-            <input placeholder="例如：幫忙搬家、提供技術諮詢…" value={form.description} onChange={handleChange('description')} />
-            {errors.description ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.description}</div> : null}
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>FAVOR 積分價值</label>
-              <input type="number" min="1" value={form.value} onChange={handleChange('value')} />
-              {errors.value ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.value}</div> : null}
-            </div>
-            <div className="form-group">
-              <label>發生日期</label>
-              <input type="date" value={form.date} onChange={handleChange('date')} />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>指定償還服務類型（可選）</label>
-            <input placeholder="例如：修電腦、搬家、UI 設計" value={form.serviceType} onChange={handleChange('serviceType')} />
-          </div>
-
-          <div style={{ marginTop: 8, padding: 12, background: 'var(--bg)', borderRadius: 6, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
-            NFT 鑄造後：<br />
-            • 受讓人信譽積分 -{form.value || 'N/A'} · 發放人 +{form.value || 'N/A'}<br />
-            • 1% Transfer Fee 進入 DAO Treasury
-          </div>
-
-          {errors.submit ? <div className="alert warn">{errors.submit}</div> : null}
-          <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-            <button className="btn primary" type="submit" disabled={busy}>{busy ? '發送中…' : '確認發放'}</button>
-            <button className="btn" type="button" onClick={() => setForm({ ...form, description: '', value: '', serviceType: '' })} disabled={busy}>取消</button>
-          </div>
-          {txHash ? <div style={{ marginTop: 8 }} className="muted">交易: <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noreferrer" className="mono">{txHash}</a></div> : null}
-        </form>
-      ) : (
-        <div className="card">
-          <div className="alert success">✓ 人情債 NFT 已發放！NFT #{issuedTokenId} — {form.fulfillerLabel || form.fulfiller} 欠 {form.issuer} {form.value} FAVOR（{form.description}）。</div>
-          <div className="nft-grid">
-            <div className="nft-card highlight">
-              <div className="nft-id">#{issuedTokenId} · 剛發放</div>
-              <div className="nft-parties"><div className="avatar woody" style={{ width: 22, height: 22, fontSize: 10 }}>{form.fulfillerLabel?.[0] || 'U'}</div> {form.fulfillerLabel || form.fulfiller} <span className="nft-arrow">→</span> <div className="avatar andy" style={{ width: 22, height: 22, fontSize: 10 }}>Y</div> {form.issuer}</div>
-              <div className="nft-amount">{form.value} FAVOR</div>
-              <div className="nft-desc">{form.description}</div>
-              <div className="nft-meta">
-                <span className="tag">{form.date}</span>
-                <span className="tag green">有效</span>
-                {form.serviceType ? <span className="tag">{form.serviceType}</span> : null}
-                <span className="tag">{form.fulfiller}</span>
-              </div>
-            </div>
+            <label>Reputation reward</label>
+            <input value={String(REWARD_FIXED)} disabled />
           </div>
         </div>
-      )}
+
+        <div className="form-group">
+          <label>人情事件描述</label>
+          <input placeholder="例如：幫忙搬家、技術諮詢" value={form.description} onChange={onField('description')} />
+          {errors.description ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.description}</div> : null}
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label>Deadline</label>
+            <input type="date" value={form.deadline} onChange={onField('deadline')} />
+            {errors.deadline ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.deadline}</div> : null}
+          </div>
+          <div className="form-group">
+            <label>Service type（可選）</label>
+            <input placeholder="例如：修電腦、搬家、UI 設計" value={form.serviceType} onChange={onField('serviceType')} />
+          </div>
+        </div>
+
+        {tab === 'bounty' ? (
+          <div className="form-group">
+            <label>Collateral (ETH)</label>
+            <input type="number" min="0.000000000000000001" step="0.0001" value={form.collateralEth} onChange={onField('collateralEth')} />
+            {errors.collateralEth ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.collateralEth}</div> : null}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 8, padding: 12, background: 'var(--bg)', borderRadius: 6, fontSize: 12, color: 'var(--muted)' }}>
+          {feeHint}
+        </div>
+
+        {errors.submit ? <div className="alert warn">{errors.submit}</div> : null}
+        <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? '送出中…' : '確認發放'}</button>
+        </div>
+      </form>
+
+      {result ? (
+        <div className="card" style={{ marginTop: 14 }}>
+          <div className="alert success" style={{ marginBottom: 10 }}>
+            ✓ {result.kind === 'social' ? 'Social' : 'Bounty'} IOU 已建立，Token #{result.tokenId}
+          </div>
+          <div className="muted">txHash: <span className="mono">{result.txHash}</span></div>
+          <div className="muted">fulfiller: <span className="mono">{result.fulfiller}</span></div>
+          {result.kind === 'social' ? <div className="muted" style={{ marginTop: 8 }}>下一步：請切換到 fulfiller 帳號，在 Accept 頁面確認此 IOU。</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

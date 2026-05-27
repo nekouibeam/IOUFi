@@ -42,10 +42,6 @@ export async function getProvider() {
 }
 
 export async function getReadProvider() {
-  if (typeof window !== 'undefined' && window.ethereum) {
-    return new ethers.BrowserProvider(window.ethereum);
-  }
-
   const rpcUrl = import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545';
   return new ethers.JsonRpcProvider(rpcUrl);
 }

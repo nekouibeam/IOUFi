@@ -3,6 +3,7 @@ import * as api from './api/contract';
 import { addressesByChain } from './api/contract';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import CreateIOU from './pages/CreateIOU';
+import AcceptIOU from './pages/AcceptIOU';
 import Marketplace from './pages/Marketplace';
 import IOUDetail from './pages/IOUDetail';
 import DAO from './pages/DAO';
@@ -22,7 +23,6 @@ export default function App() {
   const [mintForm, setMintForm] = useState({
     fulfiller: '',
     deadlineDays: 7,
-    transferable: false,
     reward: 10,
     valueEth: '0',
   });
@@ -120,7 +120,7 @@ export default function App() {
     await runTx('Mint IOU', () => api.mintIOU({
       fulfiller: mintForm.fulfiller,
       deadlineTs: deadline,
-      transferable: mintForm.transferable,
+      transferable: false,
       lifetimeRepReward: Number(mintForm.reward || 0),
       valueEth: mintForm.valueEth || '0',
     }));
@@ -237,15 +237,6 @@ export default function App() {
                     value={mintForm.valueEth}
                     onChange={(event) => setMintForm({ ...mintForm, valueEth: event.target.value })}
                   />
-                  <label className="badge" style={{ justifyContent: 'space-between', padding: '0.85rem 0.95rem' }}>
-                    <span>Transferable</span>
-                    <input
-                      type="checkbox"
-                      checked={mintForm.transferable}
-                      onChange={(event) => setMintForm({ ...mintForm, transferable: event.target.checked })}
-                      style={{ width: 'auto' }}
-                    />
-                  </label>
                 </div>
                 <button type="submit" disabled={busy || !account}>Mint IOU</button>
               </div>
@@ -345,6 +336,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/create" element={<CreateIOU />} />
+          <Route path="/accept" element={<AcceptIOU />} />
           <Route path="/market" element={<Marketplace />} />
           <Route path="/detail" element={<IOUDetail />} />
           <Route path="/ious" element={<UserIous />} />
