@@ -218,7 +218,18 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         address from = _ownerOf(tokenId);
         if (from != address(0) && to != address(0)) {
             IOUData storage iou = ious[tokenId];
-            require(iou.state != State.Active, "IOUNFT: token locked");
+
+            // New transfer rules:
+            // - Active: allow transfer only for Social IOUs (collateral == 0). Bounty IOUs (collateral > 0) are locked.
+            // - Pending: allow transfer only when mint-time `transferable` == true.
+            // - Settled / Cancelled: disallow transfers.
+            if (iou.state == State.Active) {
+                require(iou.collateral == 0, "IOUNFT: active bounty locked");
+            } else if (iou.state == State.Pending) {
+                require(iou.transferable, "IOUNFT: token not transferable");
+            } else {
+                revert("IOUNFT: token not transferable in current state");
+            }
         }
 
         return super._update(to, tokenId, auth);

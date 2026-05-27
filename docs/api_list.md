@@ -29,6 +29,15 @@ struct IOUData {
     bool unhappyClose;
 }
 ```
+#### 觀念解析
+鑄造後誰持有 NFT 目前在 solidity/src/IOUNFT.sol 的 mintIOU，實際是 _mint(msg.sender, tokenId)，所以鑄造後的 owner 是發放人，也就是債權人，不是 fulfiller。
+
+這代表：
+
+- creator = 發放人，會保留在 IOUData.creator
+- owner = ERC721 持有人，現在是發放人
+- fulfiller = 債務人，只是 IOU 裡記錄的對象，不等於 NFT 當前持有人
+所以你不需要在 IOUData 再加 owner 欄位；owner 已經由 ERC721 本身提供。若之後要更換持有人，直接走 ERC721 transfer 即可，creator 不會被覆蓋。
 
 ### `IOUNFT.State`
 
@@ -89,10 +98,11 @@ Address source: `web/src/contracts/addresses.json` under the current chain id
 - Inputs:
   - `fulfiller`: wallet address of the person who owes the IOU.
   - `deadline`: unix timestamp in seconds.
-  - `transferable`: whether the NFT can be transferred while not active.
+  - `transferable`: controls transferability while the IOU is `Pending` (set at mint time).
+    - When `Pending`: `transferable == true` allows transfers; otherwise transfers are blocked.
+    - When `Active`: Social IOUs (`collateral == 0`) are transferable; Bounty IOUs (`collateral > 0`) are locked.
+    - When `Settled` or `Cancelled`: transfers are disallowed.
   - `lifetimeRepReward`: total reputation reward to split on settlement.
-  - `description`: required human-readable IOU description.
-  - `serviceType`: optional service category for the eventual repayment.
   - `description`: required human-readable IOU description.
   - `serviceType`: optional service category for the eventual repayment.
 - ETH value:
@@ -526,6 +536,11 @@ These are the current functions exported by the frontend wrapper.
 - Uses `window.ethereum`.
 - Throws when there is no injected wallet.
 
+#### `getReadProvider() -> ethers.BrowserProvider | ethers.JsonRpcProvider`
+
+- Uses `window.ethereum` when available.
+- Falls back to `VITE_RPC_URL` or `http://127.0.0.1:8545` for read-only calls.
+
 #### `connectWallet() -> Provider`
 
 - Requests wallet accounts via `eth_requestAccounts`.
@@ -536,7 +551,30 @@ These are the current functions exported by the frontend wrapper.
 - Parameters:
   - `name`: one of `IOUNFT`, `ReputationLedger`, `Treasury`, `SDGsDAO`
 - Uses chain-scoped address lookup from `addresses.json`.
-- Returns a signer-bound contract instance.
+- Returns a signer-bound contract instance for write calls.
+
+#### `getReadContract(name) -> ethers.Contract`
+
+- Parameters:
+  - `name`: one of `IOUNFT`, `ReputationLedger`, `Treasury`, `SDGsDAO`
+- Uses chain-scoped address lookup from `addresses.json`.
+- Returns a provider-bound contract instance for read calls.
+
+#### `getIOU(tokenId)`
+
+- Maps to `IOUNFT.getIOU(tokenId)` through `getReadContract('IOUNFT')`.
+
+#### `getReputation(account)`
+
+- Maps to `ReputationLedger.getReputation(account)` through `getReadContract('ReputationLedger')`.
+
+#### `getVotingPower(account)`
+
+- Maps to `ReputationLedger.getVotingPower(account)` through `getReadContract('ReputationLedger')`.
+
+#### `getProposal(proposalId)`
+
+- Maps to `SDGsDAO.proposals(proposalId)` through `getReadContract('SDGsDAO')`.
 
 ### Write wrappers
 
@@ -544,6 +582,7 @@ These are the current functions exported by the frontend wrapper.
 
 - Maps to `IOUNFT.mintIOU(...)`.
 - `valueEth` is converted to wei with `ethers.parseEther` when non-zero.
+- The frontend wrapper passes the extended IOU fields from the create form: `description` and `serviceType`.
 
 #### `acceptIOU(tokenId)`
 

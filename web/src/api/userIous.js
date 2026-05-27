@@ -21,7 +21,7 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
   // uses multicall wrapper (fallback to batched RPC calls)
   const multicall = await import('./multicall');
   const raw = await multicall.default(provider, iouAbi, contractAddress, tokenIds, opts);
-  // normalize results to a map tokenId -> { state, description, serviceType }
+  // normalize results to a map tokenId -> full IOU view
   const map = {};
   for (const id of tokenIds) {
     const r = raw[String(id)];
@@ -31,10 +31,15 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
       tokenId: Number(id),
       creator: r.creator || r[0],
       fulfiller: r.fulfiller || r[1],
-      owner: r.owner || r[2],
+      collateral: r.collateral !== undefined ? r.collateral : r[2],
       state: r.state !== undefined ? r.state : r[3],
-      description: r.description || r[4],
-      serviceType: r.serviceType || r[5] || r.service_type || null
+      createdAt: r.createdAt !== undefined ? r.createdAt : r[4],
+      deadline: r.deadline !== undefined ? r.deadline : r[5],
+      description: r.description || r[6],
+      serviceType: r.serviceType || r[7] || r.service_type || null,
+      lifetimeRepReward: r.lifetimeRepReward !== undefined ? r.lifetimeRepReward : r[8],
+      transferable: r.transferable !== undefined ? r.transferable : r[9],
+      unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[10],
     };
     map[id] = normalized;
   }

@@ -21,8 +21,8 @@ npm start
 What this does
 
 - Creates an on-disk sqlite DB at `./data/indexer.db` using `schema.sql`.
-- Listens for `Transfer` and `IOUCreated` events (requires `IOUNFT_ADDRESS`).
-- Minimal upsert logic populates `tokens` table. Extend handlers for other events.
+- Listens for `Transfer`, `IOUCreated`, `IOUAccepted`, `IOUSettled`, `IOURefunded`, `ReputationAwarded`, `TreasuryUpdated`, and `ReputationLedgerUpdated` events (requires `IOUNFT_ADDRESS`).
+- Upserts the `tokens` table and stores the latest on-chain IOU snapshot fields alongside the event stream.
 
 Backfill
 
@@ -31,4 +31,4 @@ cd services/indexer
 npm run backfill
 ```
 
-The `backfill` script will scan the `tokens` table for rows where `description` or `service_type` is NULL and attempt to call `getIOU(tokenId)` to populate those fields (with retries).
+The `backfill` script will scan the `tokens` table for rows with missing snapshot fields and attempt to call `getIOU(tokenId)` to populate collateral, deadline, description, service type, lifetime reward, and close flags (with retries).

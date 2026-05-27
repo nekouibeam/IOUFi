@@ -30,7 +30,14 @@ contract IOUNFTTest {
     }
 
     function testMintCreatesPendingIOU() external {
-        uint256 tokenId = iou.mintIOU{value: 1 ether}(address(this), block.timestamp + 1 days, true, 100);
+        uint256 tokenId = iou.mintIOU{value: 1 ether}(
+            address(this),
+            block.timestamp + 1 days,
+            true,
+            100,
+            "Help with moving",
+            "Moving"
+        );
         IOUNFT.IOUData memory data = iou.getIOU(tokenId);
         assert(data.creator == address(this));
         assert(data.collateral == 1 ether);
@@ -38,7 +45,14 @@ contract IOUNFTTest {
     }
 
     function testSettleSocialIOUMarksSettled() external {
-        uint256 tokenId = iou.mintIOU{value: 0}(address(this), block.timestamp + 1 days, true, 100);
+        uint256 tokenId = iou.mintIOU{value: 0}(
+            address(this),
+            block.timestamp + 1 days,
+            true,
+            100,
+            "Social IOU",
+            "Social"
+        );
         iou.acceptIOU(tokenId);
         iou.settleSocialIOU(tokenId, 100);
 
@@ -48,7 +62,14 @@ contract IOUNFTTest {
 
     function testSettleBountyIOUMarksSettled() external {
         BountyReceiver fulfiller = new BountyReceiver();
-        uint256 tokenId = iou.mintIOU{value: 1 ether}(address(fulfiller), block.timestamp + 1 days, true, 100);
+        uint256 tokenId = iou.mintIOU{value: 1 ether}(
+            address(fulfiller),
+            block.timestamp + 1 days,
+            true,
+            100,
+            "Bounty work",
+            "Development"
+        );
         fulfiller.accept(iou, tokenId);
         iou.settleBountyIOU(tokenId, 100);
 

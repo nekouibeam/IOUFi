@@ -1,7 +1,7 @@
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const { ethers } = require('ethers');
 
 const RPC = process.env.JSON_RPC_URL || 'http://127.0.0.1:8545';
@@ -14,17 +14,23 @@ if (!fs.existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const db = new Database(DB_PATH);
+const db = new DatabaseSync(DB_PATH);
 
 const IOUNFT_ABI = [
-  'function getIOU(uint256) view returns (address creator, address fulfiller, address owner, uint8 state, string description, string serviceType)'
+  'function getIOU(uint256) view returns (address creator, address fulfiller, uint256 collateral, uint8 state, uint256 createdAt, uint256 deadline, string description, string serviceType, uint256 lifetimeRepReward, bool transferable, bool unhappyClose)'
 ];
 
 const provider = new ethers.JsonRpcProvider(RPC);
 const contract = new ethers.Contract(IOUNFT_ADDRESS, IOUNFT_ABI, provider);
 
-const selectMissing = db.prepare(`SELECT token_id FROM tokens WHERE description IS NULL OR service_type IS NULL ORDER BY token_id LIMIT @limit`);
-const updateStmt = db.prepare(`UPDATE tokens SET description=@description, service_type=@service_type, updated_at=@updated_at WHERE token_id=@token_id`);
+function prepare(sql) {
+  const stmt = db.prepare(sql);
+  stmt.setAllowBareNamedParameters(true);
+  return stmt;
+}
+
+const selectMissing = prepare(`SELECT token_id FROM tokens WHERE description IS NULL OR service_type IS NULL OR collateral IS NULL OR deadline IS NULL OR lifetime_rep_reward IS NULL ORDER BY token_id LIMIT @limit`);
+const updateStmt = prepare(`UPDATE tokens SET collateral=@collateral, deadline=@deadline, description=@description, service_type=@service_type, lifetime_rep_reward=@lifetime_rep_reward, transferable=@transferable, unhappy_close=@unhappy_close, updated_at=@updated_at WHERE token_id=@token_id`);
 
 async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
   const baseDelay = 500;
@@ -32,8 +38,13 @@ async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
     try {
       const r = await contract.getIOU(BigInt(tokenId));
       return {
-        description: r.description || r[4] || null,
-        serviceType: r.serviceType || r[5] || r.service_type || null
+        collateral: r.collateral !== undefined ? r.collateral : r[2],
+        deadline: r.deadline !== undefined ? r.deadline : r[5],
+        description: r.description || r[6] || null,
+        serviceType: r.serviceType || r[7] || r.service_type || null,
+        lifetimeRepReward: r.lifetimeRepReward !== undefined ? r.lifetimeRepReward : r[8],
+        transferable: r.transferable !== undefined ? r.transferable : r[9] ? 1 : 0,
+        unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[10] ? 1 : 0
       };
     } catch (err) {
       const wait = baseDelay * Math.pow(2, attempt);
@@ -56,7 +67,17 @@ async function runBatch(limit = 100) {
     try {
       const fetched = await fetchIOUWithRetry(tokenId);
       if (fetched) {
-        updateStmt.run({ token_id: tokenId, description: fetched.description, service_type: fetched.serviceType, updated_at: Math.floor(Date.now() / 1000) });
+        updateStmt.run({
+          token_id: tokenId,
+          collateral: fetched.collateral,
+          deadline: fetched.deadline,
+          description: fetched.description,
+          service_type: fetched.serviceType,
+          lifetime_rep_reward: fetched.lifetimeRepReward,
+          transferable: fetched.transferable,
+          unhappy_close: fetched.unhappyClose,
+          updated_at: Math.floor(Date.now() / 1000)
+        });
         console.log('Backfilled', tokenId);
       } else {
         console.warn('Failed to fetch after retries for', tokenId);

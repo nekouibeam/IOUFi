@@ -24,9 +24,8 @@ async function getAddresses() {
   return addressesByChain ?? {};
 }
 
-async function getChainScopedAddresses() {
+async function getChainScopedAddresses(provider) {
   const addresses = await getAddresses();
-  const provider = await getProvider();
   const network = await provider.getNetwork();
   const chainId = String(network.chainId);
 
@@ -42,24 +41,62 @@ export async function getProvider() {
   return new ethers.BrowserProvider(window.ethereum);
 }
 
+export async function getReadProvider() {
+  if (typeof window !== 'undefined' && window.ethereum) {
+    return new ethers.BrowserProvider(window.ethereum);
+  }
+
+  const rpcUrl = import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545';
+  return new ethers.JsonRpcProvider(rpcUrl);
+}
+
 export async function connectWallet() {
   const provider = await getProvider();
   await provider.send('eth_requestAccounts', []);
   return provider;
 }
 
-async function getSigner() {
-  const provider = await getProvider();
+async function getSigner(provider) {
   return provider.getSigner();
 }
 
 export async function getContract(name) {
-  const addresses = await getChainScopedAddresses();
+  const provider = await getProvider();
+  const addresses = await getChainScopedAddresses(provider);
   const addr = addresses[name];
   if (!addr) throw new Error(`${name} address not found in contracts/addresses.json`);
   const abi = abiByName[name] ?? [];
-  const signer = await getSigner();
+  const signer = await getSigner(provider);
   return new ethers.Contract(addr, abi, signer);
+}
+
+export async function getReadContract(name) {
+  const provider = await getReadProvider();
+  const addresses = await getChainScopedAddresses(provider);
+  const addr = addresses[name];
+  if (!addr) throw new Error(`${name} address not found in contracts/addresses.json`);
+  const abi = abiByName[name] ?? [];
+  return new ethers.Contract(addr, abi, provider);
+}
+
+export async function getIOU(tokenId) {
+  const contract = await getReadContract('IOUNFT');
+  return contract.getIOU(BigInt(tokenId));
+}
+
+export async function getReputation(account) {
+  const contract = await getReadContract('ReputationLedger');
+  return contract.getReputation(account);
+}
+
+export async function getVotingPower(account) {
+  const contract = await getReadContract('ReputationLedger');
+  return contract.getVotingPower(account);
+}
+
+export async function getProposal(proposalId) {
+  const contract = await getReadContract('SDGsDAO');
+  return contract.proposals(BigInt(proposalId));
 }
 
 export async function mintIOU({ fulfiller, deadlineTs, transferable = false, lifetimeRepReward = 0, valueEth = '0', description = '', serviceType = '' }) {

@@ -18,7 +18,14 @@ contract TimeoutRefundTest {
     }
 
     function testRefundPendingDoesNotRevert() external {
-        uint256 tokenId = iou.mintIOU{value: 0}(address(this), block.timestamp + 1 days, true, 50);
+        uint256 tokenId = iou.mintIOU{value: 0}(
+            address(this),
+            block.timestamp + 1 days,
+            true,
+            50,
+            "Pending refund test",
+            "General"
+        );
         iou.refundPending(tokenId);
         IOUNFT.IOUData memory data = iou.getIOU(tokenId);
         assert(data.state == IOUNFT.State.Cancelled);

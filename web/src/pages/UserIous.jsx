@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import { getUserIOUs, enrichWithOnChainData } from '../api/userIous';
 import { buildSections, normalizeAddress } from '../lib/userIousGrouping';
+import IOUNFTArtifact from '../contracts/IOUNFT.json';
 
-const IOU_ABI = ['function getIOU(uint256) view returns (address creator, address fulfiller, address owner, uint8 state, string description, string serviceType)'];
+const IOU_ABI = Array.isArray(IOUNFTArtifact) ? IOUNFTArtifact : (IOUNFTArtifact.abi || []);
 const SECTION_ORDER = [
   { key: 'created', title: 'Created by me', subtitle: '我發出的 IOU', empty: '沒有你作為 creator 的進行中 IOU。' },
   { key: 'owedToMe', title: 'Owed to me', subtitle: '我持有、可要求履約或轉移的 IOU', empty: '沒有你作為 owner 的進行中 IOU。' },

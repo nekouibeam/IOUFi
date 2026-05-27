@@ -1,12 +1,18 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 4000;
 const DATA_DB = process.env.INDEXER_DB || path.join(__dirname, '..', 'indexer', 'data', 'indexer.db');
 
-const db = new Database(DATA_DB, { readonly: true });
+const db = new DatabaseSync(DATA_DB, { readOnly: true });
+
+function prepare(sql) {
+  const stmt = db.prepare(sql);
+  stmt.setAllowBareNamedParameters(true);
+  return stmt;
+}
 const app = express();
 
 // GET /api/users/:address/ious?roles=creator,owner&states=0,1&cursor=...&limit=20
@@ -43,7 +49,7 @@ app.get('/api/users/:address/ious', (req, res) => {
     params.account = account;
     params.limit = limit;
 
-    const stmt = db.prepare(`SELECT token_id, creator, fulfiller, owner, state, description, service_type, created_at FROM tokens WHERE ${where} ORDER BY created_at DESC LIMIT @limit`);
+    const stmt = prepare(`SELECT token_id, creator, fulfiller, owner, state, collateral, deadline, lifetime_rep_reward, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned FROM tokens WHERE ${where} ORDER BY created_at DESC LIMIT @limit`);
     const rows = stmt.all(params);
 
     const nextCursor = rows.length ? rows[rows.length-1].created_at : null;
