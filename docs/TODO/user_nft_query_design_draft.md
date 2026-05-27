@@ -1,237 +1,150 @@
-# 使用者 NFT 管理查詢設計草案
+這是一份根據最新 MVP 任務清單（扁平化資料庫、Multicall、Cursor 分頁、銷毀狀態處理等優化）全面修訂後的設計草案。
+
+---
+
+# 使用者 NFT 管理查詢設計草案 (v2)
 
 ## 目標
 
 讓前端可以輸入一個使用者帳戶地址，查詢所有與該地址有關的 IOUNFT，並且依角色與狀態分類顯示。
 
-這裡的「有關」至少包含：
+這裡的「有關」包含：
 
-- 我是 `creator`
-- 我是 `fulfiller`
-- 我是目前持有人
-- 我是歷史相關方（已結清、已取消、已逾期）
+* 我是 `creator` (發出者)
+* 我是 `fulfiller` (履行者)
+* 我是目前持有人 (`owner`)
+* 我是歷史相關方（已結清、已取消等）
 
-## 目前狀況
+## 目前狀況與架構決策
 
-現有合約已提供單筆 IOU 查詢，但沒有提供依地址列出清單的 API。
+現有合約已提供單筆 IOU 查詢 (`IOUNFT.getIOU(tokenId)`)，但缺乏依地址列出清單的 API。
 
-### 現有讀取能力
+為保持智慧合約輕量化、節省 Gas 成本並提供最強大的查詢彈性，本系統採用「鏈下索引 + 鏈上驗證 (方案 A)」架構。此架構不需修改現有 `IOUNFT` 合約。
 
-- `IOUNFT.getIOU(tokenId)`
-- `IOUNFT.ious(tokenId)`
-- `ReputationLedger.getReputation(account)`
-- `ReputationLedger.getVotingPower(account)`
-- `SDGsDAO.proposals(proposalId)`
+## 系統分工與運作流程
 
-### 目前缺口
+### 1. 鏈下索引服務 (Off-chain Indexer)
 
-- 沒有 `getIOUsByUser(address)`
-- 沒有 `getIOUsByCreator(address)`
-- 沒有 `getIOUsByFulfiller(address)`
-- 沒有 `getIOUsByOwner(address)`
-- 沒有事件索引層來快速查地址相關的 token
+* **長期監聽區塊事件**：包含 `IOUCreated`, `IOUAccepted`, `IOUSettled`, `IOURefunded`，以及 ERC721 `Transfer` 事件。
+* **快取不可變資料**：在建立 `IOUCreated` 索引時，預先快取 `description` 與 `serviceType`，減輕前端負擔。
+* **處理銷毀狀態**：監聽 `Transfer` 至 `address(0)` 的事件，標記 `is_burned` 避免出現幽靈資料。
+* **提供 API**：提供具備 Cursor-based 分頁的高效查詢端點。
 
-## 方案 A（鏈下索引 + 鏈上單筆讀取）
+### 2. 前端 (Frontend)
 
-本草案以方案 A 為主：
+* **獲取清單**：以地址向 API 查詢 tokenId 陣列與精簡摘要。
+* **批次驗證**：透過 **Multicall** 批次呼叫鏈上 `getIOU(tokenId)`，確保畫面上呈現的動態狀態為最新權威資料。
+* **分類呈現**：將資料分組呈現（我發出的、欠我的、我欠別人的、歷史）。
 
-- 搜尋、過濾、排序交給鏈下索引器
-- 鏈上保留權威狀態與單筆查詢
-- 前端負責組裝結果與顯示
+### 3. 鏈上合約 (On-chain)
 
-### 系統分工
+* 保持現狀，做為資料狀態的絕對權威，僅在狀態變更時發出 Events。
 
-1. 鏈上合約（On-chain）
-   - 儲存 IOU 的真實狀態（`ious(tokenId)` / `getIOU(tokenId)`）
-   - 在狀態變更時發送事件（至少包含 `IOUCreated`, `IOUAccepted`, `IOUSettled`, `IOURefunded`）
-   - 若要正確追蹤目前持有人，索引器還需監聽 ERC721 `Transfer` 事件
+## 資料庫模型設計 (扁平化架構)
 
-2. 鏈下索引服務（Off-chain Indexer）
-   - 長期監聽區塊與事件
-   - 維護地址與 token 的關聯資料庫
-   - 提供查詢 API（REST 或 GraphQL）給前端
-
-3. 前端（Frontend）
-   - 以地址向索引器查 tokenId 清單
-   - 依需求補打鏈上 `getIOU(tokenId)` 做權威驗證
-   - 將資料分組呈現（我發出的、欠我的、我欠別人的、歷史）
-
-### 實際運作流程
-
-#### 階段一：背景同步（持續執行）
-
-1. 合約在每次 IOU 狀態變更時寫入事件 Log。
-2. 索引器消費事件，更新資料庫。
-3. 索引器建立關聯：
-   - `creator -> tokenId`
-   - `fulfiller -> tokenId`
-   - `owner -> tokenId`（透過 `Transfer`）
-4. 索引器記錄可追蹤欄位：`blockNumber`, `txHash`, `logIndex`, `updatedAt`，用於去重與排序。
-
-#### 階段二：即時查詢（使用者操作）
-
-1. 使用者輸入地址。
-2. 前端向索引器查詢該地址的 tokenId 清單（可附帶狀態、分頁、排序條件）。
-3. 前端拿到 tokenId 陣列後，批次呼叫鏈上 `getIOU(tokenId)`（建議批次/分頁，不要一次全打）。
-4. 前端依欄位 `creator`, `fulfiller`, `state` 分類後渲染。
-
-### 為什麼方案 A 適合目前專案
-
-- 合約不用新增複雜迴圈與索引映射，降低 Gas 與安全風險。
-- 查詢可以做分頁、關鍵字、狀態篩選，不消耗鏈上資源。
-- 即使未來 token 量增長，查詢壓力主要在鏈下資料庫，而非鏈上合約。
-
-### 一致性策略（建議）
-
-- 快速模式：先顯示索引器結果，再背景以 `getIOU(tokenId)` 校驗。
-- 嚴謹模式：重要畫面（例如結算前確認）以鏈上資料為最終準則。
-- 索引器延遲：若發現剛發生的交易尚未被索引，前端顯示「同步中」提示。
-
-### 索引器最小資料表（建議）
+為了極致化查詢效能，採用單一扁平化主表設計，省略關聯表 (JOIN) 操作。
 
 ```sql
--- token 主表
-tokens(
-  token_id bigint primary key,
-  creator text,
-  fulfiller text,
-  owner text,
-  state smallint,
-  created_at bigint,
-  deadline bigint,
-  updated_at timestamptz,
-  last_block bigint,
-  last_tx_hash text,
-  last_log_index integer
-)
+-- tokens 扁平化主表
+CREATE TABLE tokens (
+  token_id BIGINT PRIMARY KEY,
+  creator TEXT NOT NULL,
+  fulfiller TEXT,
+  owner TEXT,
+  state SMALLINT,
+  description TEXT,       -- 不可變資料快取
+  service_type TEXT,      -- 不可變資料快取
+  is_burned BOOLEAN DEFAULT FALSE, -- 銷毀標記
+  created_at BIGINT,
+  updated_at TIMESTAMPTZ,
+  last_block BIGINT,
+  last_tx_hash TEXT,
+  last_log_index INTEGER
+);
 
--- 地址關聯表（可多角色）
-address_token_relations(
-  account text,
-  token_id bigint,
-  role text, -- creator | fulfiller | owner | historical_party
-  updated_at timestamptz,
-  primary key(account, token_id, role)
-)
+-- 建立必要索引以加速查詢與排序
+CREATE INDEX idx_tokens_creator ON tokens(creator);
+CREATE INDEX idx_tokens_fulfiller ON tokens(fulfiller);
+CREATE INDEX idx_tokens_owner ON tokens(owner);
+CREATE INDEX idx_tokens_state ON tokens(state);
+CREATE INDEX idx_tokens_created_at ON tokens(created_at DESC);
+
 ```
 
-### 索引器查詢 API（建議）
+## 查詢 API 規格
 
-```http
-GET /api/users/:address/ious?roles=creator,fulfiller,owner&states=0,1,2,3&page=1&pageSize=20
-```
+採用 Cursor-based 分頁，避免區塊鏈資料即時更新造成的重複或遺漏。
 
-回傳範例：
+**端點：**
+`GET /api/users/:address/ious`
+
+**查詢參數：**
+
+* `roles` (string): `creator,fulfiller,owner,historical`
+* `states` (string): `0,1,2,3` (對應 Pending, Active, Settled, Cancelled)
+* `cursor` (string): 分頁指標 (例如 `blockNumber_logIndex` 或 `createdAt` 編碼)
+* `limit` (number): 單次請求數量 (預設 20)
+
+**回傳範例：**
 
 ```json
 {
-  "account": "0x...",
-  "tokenIds": [1, 5, 12, 45],
-  "total": 4,
-  "page": 1,
-  "pageSize": 20
+  "account": "0x123...",
+  "data": [
+    {
+      "tokenId": 1,
+      "description": "幫忙代購",
+      "serviceType": "Shopping",
+      "roleMatch": ["creator"]
+    },
+    {
+      "tokenId": 5,
+      "description": "修電腦",
+      "serviceType": "Tech",
+      "roleMatch": ["fulfiller", "owner"]
+    }
+  ],
+  "pagination": {
+    "nextCursor": "18456722_15",
+    "hasMore": true
+  }
 }
+
 ```
 
-## 建議的資料分類
+## 建議的資料分類 (前端顯示)
 
-前端顯示時建議分成四類：
+前端取得資料後，依據 `roleMatch` 與合約即時 `state` 分成四類：
 
-1. `Created by me`
-   - 我是 creator
-   - 代表我發出的人情債
+1. **Created by me (我發出的)**
+* 條件：我是 creator。
+* 意義：我對外發出的人情債。
 
-2. `Owed to me`
-   - 我是 fulfiller 或目前持有人
-   - 代表別人欠我的 IOU
 
-3. `Owed by me`
-   - 我是 fulfiller，但不是持有人
-   - 代表我需要履行的人情
+2. **Owed to me (欠我的)**
+* 條件：我是 fulfiller 或 owner。
+* 意義：別人欠我、且我有權力轉移或要求履行的 IOU。
 
-4. `History`
-   - 已結清 / 已取消 / 已逾期 / 已違約
-   - 用來做紀錄與追蹤
 
-## 推薦資料結構
+3. **Owed by me (我欠別人的)**
+* 條件：我是 fulfiller，但已不是 owner。
+* 意義：代表這筆 IOU 已被轉手，但我仍是最終需要提供服務的人。
 
-### 查詢輸入
 
-```ts
-{
-  address: string;
-  includeHistory: boolean;
-  states?: number[];
-}
-```
+4. **History (歷史紀錄)**
+* 條件：狀態為已結清 (Settled)、已取消 (Cancelled)。
+* 意義：歷史追蹤與信用評價參考。
 
-### 查詢輸出
 
-```ts
-{
-  account: string;
-  created: IOUItem[];
-  owedToMe: IOUItem[];
-  owedByMe: IOUItem[];
-  history: IOUItem[];
-}
-```
 
-### `IOUItem`
+## 前端實作流程與 UX 設計
 
-```ts
-{
-  tokenId: string;
-  creator: string;
-  fulfiller: string;
-  collateral: string;
-  state: 'Pending' | 'Active' | 'Settled' | 'Cancelled';
-  createdAt: number;
-  deadline: number;
-  lifetimeRepReward: string;
-  transferable: boolean;
-  unhappyClose: boolean;
-}
-```
+1. **發起請求**：使用者輸入地址，前端帶入參數向 `/api/users/:address/ious` 請求資料。
+2. **顯示骨架屏 (Skeleton)**：在等待期間顯示載入狀態。
+3. **Multicall 補全資料**：取得 `data` 陣列後，前端提取 `tokenId`，並透過 Multicall 合約批次呼叫 `IOUNFT.getIOU(tokenId)`。
+4. **比對與渲染**：
+* 結合 API 提供的 `description` (靜態) 與 Multicall 回傳的 `state` (動態)。
+* 若發現 API 回傳的狀態與鏈上不一致（例如合約已 Settled 但 API 仍顯示 Active），一律**以鏈上狀態為準**，並可於 UI 顯示微小的「同步中」圖示。
 
-## 建議的前端查詢流程
 
-1. 使用者輸入帳戶地址。
-2. 前端先呼叫索引器或本地快取，取得 tokenId 清單。
-3. 依 tokenId 逐筆呼叫 `getIOU(tokenId)`。
-4. 依 `creator` / `fulfiller` / `state` 分類。
-5. 顯示為三到四個區塊：
-   - 我發出的
-   - 欠我的
-   - 我欠別人的
-   - 歷史紀錄
-
-## 建議的最小 API 擴充
-
-若短期內只想補足前端查詢功能，建議先新增以下 read helpers：
-
-- `getIOUsByCreator(address)`
-- `getIOUsByFulfiller(address)`
-- `getIOUIdsByOwner(address)`
-- `getIOUsByStatus(address, uint8 state)`
-
-若想長期維護，建議改成：
-
-- 鏈上保留單筆資料與事件
-- 鏈下 indexer 處理地址清單
-- 前端只負責呈現與細節查詢
-
-## 目前專案的限制
-
-- `IOUNFT` 只有 `mapping(uint256 => IOUData) public ious`，沒有地址索引。
-- `ERC721` 目前不是 enumerable 版本。
-- 前端 `web/src/api/contract.js` 目前只有單筆寫入 wrapper，還沒有地址查詢 wrapper。
-
-## 結論
-
-如果目標是讓使用者輸入地址後看到「跟自己有關的所有 NFT」，最合理的方案是：
-
-- 短期：事件索引 + `getIOU(tokenId)` 補資料
-- 中期：加 read helpers，讓前端能按 creator / fulfiller 查詢
-- 長期：若真的需要持有者枚舉，再評估 ERC721Enumerable 或完整 indexer
-
+5. **分頁載入**：使用者滾動到底部時，使用 `nextCursor` 發起下一次請求。
