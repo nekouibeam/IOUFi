@@ -9,22 +9,10 @@ const IOUNFT_ADDRESS = process.env.IOUNFT_ADDRESS || process.env.CONTRACT_ADDRES
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, 'indexer.db');
+const IOUNFT_ABI = require('../../web/src/contracts/IOUNFT.json').abi;
 
 
 const provider = new ethers.JsonRpcProvider(RPC);
-
-// Minimal ABI: events we care about. Indexer can be extended later.
-const IOUNFT_ABI = [
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
-  'event IOUCreated(uint256 indexed tokenId, address indexed creator, address indexed fulfiller, uint256 collateral)',
-  'event IOUAccepted(uint256 indexed tokenId, address fulfiller)',
-  'event IOUSettled(uint256 indexed tokenId, uint256 fee, uint256 payout)',
-  'event IOURefunded(uint256 indexed tokenId, uint256 amount)',
-  'event ReputationAwarded(uint256 indexed tokenId, address indexed account, uint256 amount)',
-  'event TreasuryUpdated(address indexed treasury)',
-  'event ReputationLedgerUpdated(address indexed reputationLedger)',
-  'function getIOU(uint256 tokenId) view returns (address creator, address fulfiller, uint256 collateral, uint8 state, uint256 createdAt, uint256 deadline, string description, string serviceType, uint256 lifetimeRepReward, bool transferable, bool unhappyClose)'
-];
 
 const db = new DatabaseSync(DB_PATH);
 
@@ -283,10 +271,10 @@ async function syncFromChain(source = 'poll') {
       return;
     }
 
-    const replayFrom = tokenCount === 0 ? 0 : lastBlock + 1;
+    const replayFrom = last ? lastBlock + 1 : 0;
     const replayTo = currentBlock - CONFIRMATIONS;
     if (replayFrom <= replayTo) {
-      console.log(source === 'startup' && tokenCount === 0 ? 'Rebuilding index from chain logs' : 'Syncing missed events', { replayFrom, replayTo });
+      console.log(!last ? 'Rebuilding index from chain logs' : 'Syncing missed events', { replayFrom, replayTo });
       await replayEventsInRange(replayFrom, replayTo);
     }
 

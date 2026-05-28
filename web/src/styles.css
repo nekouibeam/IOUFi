@@ -508,6 +508,12 @@
   color: var(--muted);
 }
 
+.chip-type {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
 .chip-ok {
   background: var(--accent-bg);
   color: var(--accent);
@@ -546,6 +552,10 @@
 .address-grid {
   display: grid;
   gap: 10px;
+}
+
+.card-actions {
+  margin-top: 14px;
 }
 
 .marketplace-fields {

@@ -8,6 +8,7 @@ const RPC = process.env.JSON_RPC_URL || 'http://127.0.0.1:8545';
 const IOUNFT_ADDRESS = process.env.IOUNFT_ADDRESS || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'indexer.db');
+const IOUNFT_ABI = require('../../web/src/contracts/IOUNFT.json').abi;
 
 if (!fs.existsSync(DB_PATH)) {
   console.error('Indexer DB not found at', DB_PATH);
@@ -15,10 +16,6 @@ if (!fs.existsSync(DB_PATH)) {
 }
 
 const db = new DatabaseSync(DB_PATH);
-
-const IOUNFT_ABI = [
-  'function getIOU(uint256) view returns (address creator, address fulfiller, uint256 collateral, uint8 state, uint256 createdAt, uint256 deadline, string description, string serviceType, uint256 lifetimeRepReward, bool transferable, bool unhappyClose)'
-];
 
 const provider = new ethers.JsonRpcProvider(RPC);
 const contract = new ethers.Contract(IOUNFT_ADDRESS, IOUNFT_ABI, provider);

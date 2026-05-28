@@ -9,6 +9,7 @@ export function buildTokenView(row, enriched) {
   const displayedState = chain?.state ?? row.state;
   const displayedDescription = chain?.description ?? row.description ?? '—';
   const displayedServiceType = chain?.serviceType ?? chain?.service_type ?? row.service_type ?? '—';
+  const displayedCollateral = chain?.collateral ?? row.collateral ?? row.value ?? null;
   const syncing = String(row.state) !== String(displayedState);
 
   return {
@@ -19,6 +20,7 @@ export function buildTokenView(row, enriched) {
     state: displayedState,
     description: displayedDescription,
     serviceType: displayedServiceType,
+    collateral: displayedCollateral,
     syncing,
   };
 }

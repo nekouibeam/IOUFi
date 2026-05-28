@@ -36,6 +36,7 @@ function TokenCard({ token }) {
     2: 'Settled',
     3: 'Cancelled',
   }[String(token.state)] ?? String(token.state ?? '—');
+  const typeLabel = Number(token.collateral ?? 0) > 0 ? 'Bounty' : 'Social';
 
   return (
     <article className="iou-card">
@@ -48,6 +49,7 @@ function TokenCard({ token }) {
       </div>
 
       <div className="iou-meta">
+        <span className="chip chip-type">{typeLabel}</span>
         <span className="chip">{token.serviceType || 'No service type'}</span>
         <span className={`chip ${token.syncing ? 'chip-warn' : 'chip-ok'}`}>{token.syncing ? 'Syncing' : 'Synced'}</span>
       </div>
@@ -63,6 +65,14 @@ function TokenCard({ token }) {
         <div><span className="label">Owner</span><div className="mono small">{token.owner || '—'}</div></div>
         <div><span className="label">Fulfiller</span><div className="mono small">{token.fulfiller || '—'}</div></div>
       </div>
+
+      {token.sectionKey === 'owedToMe' ? (
+        <div className="card-actions">
+          <button type="button" className="btn full" disabled title="結案功能待下一步實作">
+            結案
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -86,7 +96,7 @@ function SectionBlock({ section, items, loading }) {
         </div>
       ) : items.length ? (
         <div className="iou-grid">
-          {items.map((token) => <TokenCard key={`${section.key}-${token.tokenId}`} token={token} />)}
+          {items.map((token) => <TokenCard key={`${section.key}-${token.tokenId}`} token={{ ...token, sectionKey: section.key }} />)}
         </div>
       ) : (
         <div className="empty-state">{section.empty}</div>
