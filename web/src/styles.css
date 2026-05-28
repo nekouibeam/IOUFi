@@ -548,6 +548,13 @@
   gap: 10px;
 }
 
+.marketplace-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .label {
   display: block;
   font-size: 0.78rem;
@@ -610,6 +617,10 @@
 @media (max-width: 960px) {
   .user-ious-hero,
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marketplace-fields {
     grid-template-columns: 1fr;
   }
 

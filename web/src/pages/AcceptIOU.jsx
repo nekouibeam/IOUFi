@@ -17,6 +17,7 @@ function asBigInt(value) {
 export default function AcceptIOU() {
   const [account, setAccount] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyTokenId, setBusyTokenId] = useState('');
   const [loadingList, setLoadingList] = useState(false);
   const [items, setItems] = useState([]);
   const [dismissedTokenIds, setDismissedTokenIds] = useState(() => new Set());
@@ -118,6 +119,7 @@ export default function AcceptIOU() {
 
   async function acceptToken(tokenId) {
     setBusy(true);
+    setBusyTokenId(String(tokenId));
     setError('');
     setStatus('送出 accept 交易中...');
     try {
@@ -125,17 +127,20 @@ export default function AcceptIOU() {
       const tx = await api.acceptIOU(tokenId);
       setStatus('交易已送出，等待確認...');
       await tx.wait();
+      // optimistic removal: mark dismissed locally to hide card immediately
       setDismissedTokenIds((prev) => {
         const next = new Set(prev);
         next.add(String(tokenId));
         return next;
       });
+      setItems((prev) => prev.filter((r) => String(r.token_id) !== String(tokenId)));
       setStatus(`Token #${tokenId} 已接受，狀態應轉為 Active。`);
       await loadInbox();
     } catch (err) {
       setError(err?.message || String(err));
     } finally {
       setBusy(false);
+      setBusyTokenId('');
     }
   }
 
@@ -195,7 +200,13 @@ export default function AcceptIOU() {
               <div className="mono small" style={{ color: 'var(--muted)' }}>creator: {row.creator}</div>
               <div className="mono small" style={{ color: 'var(--muted)' }}>fulfiller: {row.fulfiller}</div>
               <div style={{ marginTop: 10 }}>
-                <button className="btn primary" onClick={() => acceptToken(row.token_id)} disabled={busy}>確認 / 接受此 IOU</button>
+                <button
+                  className="btn primary"
+                  onClick={() => acceptToken(row.token_id)}
+                  disabled={busy || String(busyTokenId) === String(row.token_id)}
+                >
+                  {String(busyTokenId) === String(row.token_id) ? '處理中…' : '確認 / 接受此 IOU'}
+                </button>
               </div>
             </article>
           ))}

@@ -60,4 +60,35 @@ app.get('/api/users/:address/ious', (req, res) => {
   }
 });
 
+// GET /api/marketplace/ious?limit=100
+// Demo B marketplace: open bounty IOUs only.
+app.get('/api/marketplace/ious', (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit || '100', 10)));
+    const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+    const stmt = prepare(`
+      SELECT token_id, creator, fulfiller, owner, state, collateral, deadline, lifetime_rep_reward, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned
+      FROM tokens
+      WHERE is_burned = 0
+        AND state = 0
+        AND COALESCE(collateral, 0) > 0
+        AND lower(COALESCE(fulfiller, '')) = lower(@zeroAddress)
+      ORDER BY created_at DESC, token_id DESC
+      LIMIT @limit
+    `);
+
+    const rows = stmt.all({ zeroAddress, limit });
+    res.json({
+      data: rows,
+      pagination: {
+        hasMore: rows.length === limit,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(503).json({ error: 'service unavailable' });
+  }
+});
+
 app.listen(PORT, () => console.log(`Query API listening on ${PORT} (db=${DATA_DB})`));
