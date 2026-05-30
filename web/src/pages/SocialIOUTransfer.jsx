@@ -8,7 +8,7 @@ import { buildTokenView, normalizeAddress } from '../lib/userIousGrouping';
 import { getUserIOUs, enrichWithOnChainData } from '../api/userIous';
 
 const IOU_ABI = Array.isArray(IOUNFTArtifact) ? IOUNFTArtifact : (IOUNFTArtifact.abi || []);
-const QUERY_ROLES = ['owner', 'fulfiller', 'transferTarget'];
+const QUERY_ROLES = ['creator', 'owner', 'fulfiller', 'transferTarget'];
 
 function formatDeadline(value) {
   const timestamp = Number(value || 0);
@@ -30,6 +30,7 @@ function TransferCard({ token, mode, busy, onStartTransfer, onConfirmNewOwner, o
   const isTargetMode = mode === 'newOwner';
   const isFulfillerMode = mode === 'fulfiller';
   const transferRequested = Boolean(token.transferRequested);
+  const transferEligible = Number(token.state) === 1 && Number(token.collateral || 0) === 0;
   const feeLabel = token.transferFeePaid ? formatEth(token.transferFeePaid) : '0.0015 ETH';
   const confirmLabel = isTargetMode ? 'Confirm as new owner' : 'Confirm as fulfiller';
   const statusTag = transferRequested
@@ -73,13 +74,15 @@ function TransferCard({ token, mode, busy, onStartTransfer, onConfirmNewOwner, o
           <button
             type="button"
             className="btn primary full"
-            disabled={busy || transferRequested || !draftTo}
+            disabled={busy || transferRequested || !draftTo || !transferEligible}
             onClick={() => onStartTransfer(token.tokenId, draftTo)}
           >
             {busy ? 'Processing…' : (transferRequested ? 'Transferring…' : '申請轉送')}
           </button>
           <div className="transfer-note">
-            {transferRequested ? '這筆 IOU 已經在 transfer 流程中，請由新 owner 與 fulfiller 確認。' : '僅限 Active social IOU 可發起轉讓。'}
+            {transferRequested
+              ? '這筆 IOU 已經在 transfer 流程中，請由新 owner 與 fulfiller 確認。'
+              : (transferEligible ? '僅限 Active social IOU 可發起轉讓。' : '只有 Active 的 Social IOU 能發起轉讓。')}
           </div>
         </div>
       ) : null}
@@ -165,7 +168,7 @@ export default function SocialIOUTransfer() {
   const acct = normalizeAddress(account);
 
   const tokens = useMemo(() => rows.map((row) => buildTokenView(row, enriched)), [rows, enriched]);
-  const ownerTokens = useMemo(() => tokens.filter((token) => token.owner === acct && Number(token.collateral || 0) === 0 && Number(token.state) === 1), [tokens, acct]);
+  const ownerTokens = useMemo(() => tokens.filter((token) => token.owner === acct && Number(token.collateral || 0) === 0), [tokens, acct]);
   const newOwnerTokens = useMemo(() => tokens.filter((token) => token.transferRequested && normalizeAddress(token.transferTo) === acct && Number(token.state) === 1 && Number(token.collateral || 0) === 0), [tokens, acct]);
   const fulfillerTokens = useMemo(() => tokens.filter((token) => token.transferRequested && token.fulfiller === acct && Number(token.state) === 1 && Number(token.collateral || 0) === 0), [tokens, acct]);
 
@@ -194,7 +197,7 @@ export default function SocialIOUTransfer() {
     setLoading(true);
     setError('');
     try {
-      const payload = await getUserIOUs(normalized, { roles: QUERY_ROLES, states: [1], limit: 200 });
+      const payload = await getUserIOUs(normalized, { roles: QUERY_ROLES, limit: 200 });
       const rawRows = payload.data || [];
       setRows(rawRows);
       setQueryTime(new Date().toLocaleString());
