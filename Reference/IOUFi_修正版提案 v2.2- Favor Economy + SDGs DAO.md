@@ -99,15 +99,16 @@ Treasury 後續資金主要來自協議內建的手續費：
 
 **建立與確認（Pending → Active）：**
 
-1. Andy 建立 Social IOU 草稿：記錄欠方(Woody)、債權人(Andy)、描述、技能 tag。
+1. Andy 建立 Social IOU 草稿：記錄欠方fulfiller(Woody)、債權人owner(Andy)、描述、技能 tag、deadline。
 2. Woody 進行 on-chain 確認（Confirm），狀態轉為 Active。
-3. 確認當下，為獎勵 Andy 建立人情紀錄，系統先發放 1/2 Reputation 給 Andy（受衰減規則限制）。
+3. 確認當下，為獎勵 Andy 建立人情紀錄，系統先發放 5/10 * function_衰減規則(10 Reputation) 給 Andy。
 
 **償還與結算（Active → Settled）：**
 Woody 實際償還後，Andy 進行結算並給予 a/b/c 評價：
 
-* **a 物超所值 / b 中規中矩**：Woody 獲得 Reputation（受衰減限制），Andy 獲得剩餘的 1/2 Reputation。
-* **c 很糟糕**：不直接大量扣分，改為標記 UnhappyClose（污點 +1），必要時扣減少量 CurrentRep。
+* **a 物超所值**:Woody 獲得 function_衰減規則(8 Reputation)，Andy 獲得 5/10 * function_衰減規則(10 Reputation)。
+* **b 中規中矩**:Woody 獲得 6/10*function_衰減規則(8 Reputation)，Andy 獲得 3/10 * function_衰減規則(10 Reputation)。
+* **c 很糟糕**：Woody 扣減 1 CurrentRep，Andy 獲得 1/10 * function_衰減規則(10 Reputation)，IOU 標記為 UnhappyClose（污點 +1）。
 * 結案後，NFT 狀態轉為 Settled，保留履約紀錄。
 
 ---
@@ -126,14 +127,12 @@ Woody 實際償還後，Andy 進行結算並給予 a/b/c 評價：
 
 **結算與放款（Active → Settled）：**
 
-1. Woody 完成服務，Amy 按下完成確認。
+1. Woody 完成服務送出結算申請，Amy 按下完成確認。
 2. 合約自動執行結算：
-* 抽取 **Marketplace fee** 轉入 Treasury。
+* 抽取 5% **Marketplace fee** 轉入 Treasury。
 * 剩餘資金放款給 Woody。
 * 狀態轉為 Settled。
-
-
-3. Reputation 發放：Woody 獲得 Reputation（受衰減限制），Amy 獲得少量 Reputation。
+3. Reputation 發放：Woody 加 function_衰減規則(10 Reputation)，Amy 加 function_衰減規則(8 Reputation)。
 
 *(邊界條件)*：若任務處於 Active 狀態但 Woody 逾期未完成，Amy 可觸發 Timeout 機制取回資金。
 

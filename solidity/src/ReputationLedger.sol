@@ -56,6 +56,16 @@ contract ReputationLedger is Ownable, IReputationLedger {
         emit ReputationChanged(to, int256(adjusted), int256(adjusted), 0);
     }
 
+    function slashRep(address account, uint256 amount) external onlyIOUNFT {
+        require(account != address(0), "ReputationLedger: zero account");
+
+        ReputationData storage target = reputations[account];
+        require(target.currentRep >= target.lockedRep + amount, "ReputationLedger: insufficient rep");
+        target.currentRep -= amount;
+
+        emit ReputationChanged(account, -int256(amount), 0, 0);
+    }
+
     function lockRep(address account, uint256 amount) external onlyDAO {
         ReputationData storage target = reputations[account];
         require(target.currentRep >= target.lockedRep + amount, "ReputationLedger: insufficient rep");
@@ -113,6 +123,40 @@ contract ReputationLedger is Ownable, IReputationLedger {
 
         record.decayLevel = record.decayLevel < type(uint8).max ? record.decayLevel + 1 : record.decayLevel;
         record.lastInteractionTs = block.timestamp;
+        return adjusted;
+    }
+
+    function computeDecayedAmount(uint256 base, address to, address from) external view returns (uint256) {
+        if (from == address(0) || from == to) {
+            return base;
+        }
+
+        (address a, address b) = from < to ? (from, to) : (to, from);
+        bytes32 key = keccak256(abi.encodePacked(a, b));
+        InteractionRecord storage record = interactions[key];
+
+        uint8 level = record.decayLevel;
+        if (record.lastInteractionTs != 0 && block.timestamp > record.lastInteractionTs) {
+            uint256 elapsed = block.timestamp - record.lastInteractionTs;
+            uint8 recovered = uint8(elapsed / DECAY_WINDOW);
+            if (recovered > 0) {
+                if (level > recovered) {
+                    level -= recovered;
+                } else {
+                    level = 0;
+                }
+            }
+        }
+
+        if (level > 8) {
+            level = 8;
+        }
+
+        uint256 adjusted = base >> level;
+        if (adjusted == 0 && base > 0) {
+            adjusted = 1;
+        }
+
         return adjusted;
     }
 }

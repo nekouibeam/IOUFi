@@ -40,9 +40,14 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
       deadline: r.deadline !== undefined ? r.deadline : r[5],
       description: r.description || r[6],
       serviceType: r.serviceType || r[7] || r.service_type || null,
-      lifetimeRepReward: r.lifetimeRepReward !== undefined ? r.lifetimeRepReward : r[8],
-      transferable: r.transferable !== undefined ? r.transferable : r[9],
-      unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[10],
+      decayedCreatorRepBase: r.decayedCreatorRepBase !== undefined ? r.decayedCreatorRepBase : r[8],
+      decayedFulfillerRepBase: r.decayedFulfillerRepBase !== undefined ? r.decayedFulfillerRepBase : r[9],
+      closeRequested: r.closeRequested !== undefined ? r.closeRequested : r[10],
+      closeRequestedAt: r.closeRequestedAt !== undefined ? r.closeRequestedAt : r[11],
+      repPreAwarded: r.repPreAwarded !== undefined ? r.repPreAwarded : r[12],
+      repPreAwardedAmount: r.repPreAwardedAmount !== undefined ? r.repPreAwardedAmount : r[13],
+      transferable: r.transferable !== undefined ? r.transferable : r[14],
+      unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[15],
     };
 
     try {

@@ -10,6 +10,10 @@ interface IReputationLedger {
 
     function awardRep(address to, uint256 amount, address from) external;
 
+    function slashRep(address account, uint256 amount) external;
+
+    function computeDecayedAmount(uint256 base, address to, address from) external view returns (uint256);
+
     function lockRep(address account, uint256 amount) external;
 
     function unlockRep(address account, uint256 amount) external;

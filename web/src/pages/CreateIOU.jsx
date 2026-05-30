@@ -4,7 +4,6 @@ import * as api from '../api/contract';
 import IOUNFTArtifact from '../contracts/IOUNFT.json';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-const REWARD_FIXED = 10;
 
 const DEMO_RECIPIENTS = [
   { name: 'Andy', address: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' },
@@ -103,7 +102,6 @@ export default function CreateIOU() {
         fulfiller,
         deadlineTs,
         transferable: false,
-        lifetimeRepReward: REWARD_FIXED,
         valueEth,
         description: form.description,
         serviceType: form.serviceType,
@@ -156,7 +154,7 @@ export default function CreateIOU() {
 
           <div className="form-group">
             <label>Reputation reward</label>
-            <input value={String(REWARD_FIXED)} disabled />
+            <input value="由合約依 IOU 類型與衰減規則自動計算" disabled />
           </div>
         </div>
 

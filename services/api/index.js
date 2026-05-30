@@ -49,7 +49,7 @@ app.get('/api/users/:address/ious', (req, res) => {
     params.account = account;
     params.limit = limit;
 
-    const stmt = prepare(`SELECT token_id, creator, fulfiller, owner, state, CAST(collateral AS TEXT) AS collateral, deadline, lifetime_rep_reward, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned FROM tokens WHERE ${where} ORDER BY created_at DESC LIMIT @limit`);
+    const stmt = prepare(`SELECT token_id, creator, fulfiller, owner, state, CAST(collateral AS TEXT) AS collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned FROM tokens WHERE ${where} ORDER BY created_at DESC LIMIT @limit`);
     const rows = stmt.all(params);
 
     const nextCursor = rows.length ? rows[rows.length-1].created_at : null;
@@ -68,7 +68,7 @@ app.get('/api/marketplace/ious', (req, res) => {
     const zeroAddress = '0x0000000000000000000000000000000000000000';
 
     const stmt = prepare(`
-      SELECT token_id, creator, fulfiller, owner, state, CAST(collateral AS TEXT) AS collateral, deadline, lifetime_rep_reward, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned
+      SELECT token_id, creator, fulfiller, owner, state, CAST(collateral AS TEXT) AS collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, description, service_type, created_at, updated_at, last_block, last_tx_hash, last_log_index, is_burned
       FROM tokens
       WHERE is_burned = 0
         AND state = 0

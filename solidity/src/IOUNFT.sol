@@ -23,7 +23,12 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         uint256 deadline;
         string description;
         string serviceType;
-        uint256 lifetimeRepReward;
+        uint256 decayedCreatorRepBase;
+        uint256 decayedFulfillerRepBase;
+        bool closeRequested;
+        uint256 closeRequestedAt;
+        bool repPreAwarded;
+        uint256 repPreAwardedAmount;
         bool transferable;
         bool unhappyClose;
     }
@@ -39,7 +44,9 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
     event IOUAccepted(uint256 indexed tokenId, address indexed fulfiller);
     event IOUSettled(uint256 indexed tokenId, uint256 fee, uint256 payout);
     event IOURefunded(uint256 indexed tokenId, uint256 amount);
-    event ReputationAwarded(uint256 indexed tokenId, address indexed account, uint256 amount);
+    event CloseRequested(uint256 indexed tokenId, address indexed fulfiller);
+    event CloseConfirmed(uint256 indexed tokenId, address indexed owner);
+    event CloseRejected(uint256 indexed tokenId, address indexed owner);
     event TreasuryUpdated(address indexed treasury);
     event ReputationLedgerUpdated(address indexed reputationLedger);
 
@@ -66,12 +73,27 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         marketplaceFeeBps = feeBps;
     }
 
-    function mintIOU(address fulfiller, uint256 deadline, bool transferable, uint256 lifetimeRepReward, string calldata description, string calldata serviceType) external payable returns (uint256 tokenId) {
+    function mintIOU(address fulfiller, uint256 deadline, bool transferable, string calldata description, string calldata serviceType) external payable returns (uint256 tokenId) {
         require(deadline > block.timestamp, "IOUNFT: invalid deadline");
         require(bytes(description).length > 0, "IOUNFT: description required");
         tokenId = nextTokenId++;
 
         _mint(msg.sender, tokenId);
+        // determine raw bases based on Social vs Bounty
+        uint256 rawCreatorBase = fulfiller == address(0) || msg.value == 0 ? 10 : 8;
+        uint256 rawFulfillerBase = msg.value == 0 ? 8 : 10;
+
+        uint256 decayedCreator = 0;
+        uint256 decayedFulfiller = 0;
+        if (address(reputationLedger) != address(0)) {
+            decayedCreator = reputationLedger.computeDecayedAmount(rawCreatorBase, msg.sender, fulfiller);
+            if (fulfiller != address(0)) {
+                decayedFulfiller = reputationLedger.computeDecayedAmount(rawFulfillerBase, fulfiller, msg.sender);
+            } else {
+                decayedFulfiller = reputationLedger.computeDecayedAmount(rawFulfillerBase, address(0), msg.sender);
+            }
+        }
+
         ious[tokenId] = IOUData({
             creator: msg.sender,
             fulfiller: fulfiller,
@@ -81,7 +103,12 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             deadline: deadline,
             description: description,
             serviceType: serviceType,
-            lifetimeRepReward: lifetimeRepReward,
+            decayedCreatorRepBase: decayedCreator,
+            decayedFulfillerRepBase: decayedFulfiller,
+            closeRequested: false,
+            closeRequestedAt: 0,
+            repPreAwarded: false,
+            repPreAwardedAmount: 0,
             transferable: transferable,
             unhappyClose: false
         });
@@ -95,6 +122,16 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
 
         iou.fulfiller = msg.sender;
         iou.state = State.Active;
+        // pre-award creator half of decayedCreatorRepBase if configured
+        if (address(reputationLedger) != address(0) && !iou.repPreAwarded && iou.decayedCreatorRepBase > 0) {
+            uint256 preAward = (iou.decayedCreatorRepBase * 5) / 10;
+            if (preAward > 0) {
+                reputationLedger.awardRep(iou.creator, preAward, iou.fulfiller);
+                iou.repPreAwarded = true;
+                iou.repPreAwardedAmount = preAward;
+            }
+        }
+
         emit IOUAccepted(tokenId, msg.sender);
     }
 
@@ -177,27 +214,87 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             return;
         }
 
-        uint256 base = iou.lifetimeRepReward;
-        if (base == 0) {
+        uint256 creatorBase = iou.decayedCreatorRepBase;
+        uint256 fulfillerBase = iou.decayedFulfillerRepBase;
+
+        if (creatorBase == 0 && fulfillerBase == 0) {
             return;
         }
 
-        uint256 creatorShare = base / 2;
-        uint256 fulfillerShare = base - creatorShare;
-        if (rating <= 1) {
-            creatorShare = base / 4;
-            fulfillerShare = base / 4;
+        if (rating == 2) {
+            // Great: creator gets floor(creatorBase * 5/10), fulfiller gets fulfillerBase
+            uint256 creatorAward = (creatorBase * 5) / 10;
+            if (creatorAward > 0) {
+                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+            }
+            if (fulfillerBase > 0 && iou.fulfiller != address(0)) {
+                reputationLedger.awardRep(iou.fulfiller, fulfillerBase, iou.creator);
+            }
+        } else if (rating == 1) {
+            // Neutral: creator floor(creatorBase * 3/10), fulfiller floor(fulfillerBase * 6/10)
+            uint256 creatorAward = (creatorBase * 3) / 10;
+            uint256 fulfillerAward = (fulfillerBase * 6) / 10;
+            if (fulfillerAward > 0 && iou.fulfiller != address(0)) {
+                reputationLedger.awardRep(iou.fulfiller, fulfillerAward, iou.creator);
+            }
+            if (creatorAward > 0) {
+                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+            }
+        } else if (rating == 0) {
+            // Bad: creator floor(creatorBase * 1/10), fulfiller gets 0 and is slashed
+            uint256 creatorAward = (creatorBase * 1) / 10;
+            if (creatorAward > 0) {
+                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+            }
+            if (iou.fulfiller != address(0)) {
+                reputationLedger.slashRep(iou.fulfiller, 1);
+            }
             iou.unhappyClose = true;
         }
+    }
 
-        if (creatorShare > 0) {
-            reputationLedger.awardRep(iou.creator, creatorShare, iou.fulfiller);
-            emit ReputationAwarded(tokenId, iou.creator, creatorShare);
+    function requestClose(uint256 tokenId) external {
+        IOUData storage iou = _mustBeActive(tokenId);
+        require(msg.sender == iou.fulfiller, "IOUNFT: only fulfiller");
+        require(!iou.closeRequested, "IOUNFT: already requested");
+
+        iou.closeRequested = true;
+        iou.closeRequestedAt = block.timestamp;
+        emit CloseRequested(tokenId, msg.sender);
+    }
+
+    function confirmClose(uint256 tokenId, uint8 rating) external nonReentrant {
+        IOUData storage iou = _mustBeActive(tokenId);
+        require(msg.sender == ownerOf(tokenId), "IOUNFT: only owner");
+        require(iou.closeRequested, "IOUNFT: not requested");
+
+        if (iou.collateral == 0) {
+            _finalizeSettlement(tokenId, rating, 0, 0);
+        } else {
+            uint256 fee = (iou.collateral * marketplaceFeeBps) / 10000;
+            uint256 payout = iou.collateral - fee;
+            _finalizeSettlement(tokenId, rating, fee, payout);
+            if (fee > 0) {
+                _transferEth(payable(treasury), fee);
+            }
+            if (payout > 0) {
+                _transferEth(payable(iou.fulfiller), payout);
+            }
         }
-        if (fulfillerShare > 0 && iou.fulfiller != address(0)) {
-            reputationLedger.awardRep(iou.fulfiller, fulfillerShare, iou.creator);
-            emit ReputationAwarded(tokenId, iou.fulfiller, fulfillerShare);
-        }
+
+        iou.closeRequested = false;
+        iou.closeRequestedAt = 0;
+        emit CloseConfirmed(tokenId, msg.sender);
+    }
+
+    function rejectClose(uint256 tokenId) external {
+        IOUData storage iou = _mustBeActive(tokenId);
+        require(msg.sender == ownerOf(tokenId), "IOUNFT: only owner");
+        require(iou.closeRequested, "IOUNFT: not requested");
+
+        iou.closeRequested = false;
+        iou.closeRequestedAt = 0;
+        emit CloseRejected(tokenId, msg.sender);
     }
 
     function _finalizeSettlement(uint256 tokenId, uint8 rating, uint256 fee, uint256 payout) internal {

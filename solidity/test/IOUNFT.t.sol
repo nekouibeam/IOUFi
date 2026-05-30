@@ -34,7 +34,6 @@ contract IOUNFTTest {
             address(this),
             block.timestamp + 1 days,
             true,
-            100,
             "Help with moving",
             "Moving"
         );
@@ -49,7 +48,6 @@ contract IOUNFTTest {
             address(this),
             block.timestamp + 1 days,
             true,
-            100,
             "Social IOU",
             "Social"
         );
@@ -66,7 +64,6 @@ contract IOUNFTTest {
             address(fulfiller),
             block.timestamp + 1 days,
             true,
-            100,
             "Bounty work",
             "Development"
         );

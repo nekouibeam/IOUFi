@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import { getUserIOUs, enrichWithOnChainData } from '../api/userIous';
+import * as api from '../api/contract';
 import { getReadProvider } from '../api/contract';
 import addressesByChain from '../contracts/addresses.json';
 import { buildSections, normalizeAddress } from '../lib/userIousGrouping';
@@ -29,7 +30,9 @@ function SkeletonCard() {
   );
 }
 
-function TokenCard({ token }) {
+function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
+  const [rating, setRating] = useState(2);
+  const [busyAction, setBusyAction] = useState('');
   const stateLabel = {
     0: 'Pending',
     1: 'Active',
@@ -37,6 +40,18 @@ function TokenCard({ token }) {
     3: 'Cancelled',
   }[String(token.state)] ?? String(token.state ?? '—');
   const typeLabel = Number(token.collateral ?? 0) > 0 ? 'Bounty' : 'Social';
+  const closeStatus = token.closeRequested ? 'Close requested' : 'Close open';
+  const canRequestClose = token.sectionKey === 'owedByMe' && !token.closeRequested && !token.syncing;
+  const canRespondClose = token.sectionKey === 'owedToMe' && token.closeRequested && !token.syncing;
+
+  async function runAction(actionKey, action) {
+    try {
+      setBusyAction(actionKey);
+      await action();
+    } finally {
+      setBusyAction('');
+    }
+  }
 
   return (
     <article className="iou-card">
@@ -51,6 +66,7 @@ function TokenCard({ token }) {
       <div className="iou-meta">
         <span className="chip chip-type">{typeLabel}</span>
         <span className="chip">{token.serviceType || 'No service type'}</span>
+        <span className={`chip ${token.closeRequested ? 'chip-warn' : 'chip-ok'}`}>{closeStatus}</span>
         <span className={`chip ${token.syncing ? 'chip-warn' : 'chip-ok'}`}>{token.syncing ? 'Syncing' : 'Synced'}</span>
       </div>
 
@@ -64,20 +80,76 @@ function TokenCard({ token }) {
         <div><span className="label">Creator</span><div className="mono small">{token.creator || '—'}</div></div>
         <div><span className="label">Owner</span><div className="mono small">{token.owner || '—'}</div></div>
         <div><span className="label">Fulfiller</span><div className="mono small">{token.fulfiller || '—'}</div></div>
+        <div><span className="label">Close requested at</span><div className="mono small">{token.closeRequestedAt || '—'}</div></div>
       </div>
+
+      {token.sectionKey === 'owedByMe' ? (
+        <div className="card-actions">
+          <button
+            type="button"
+            className={token.closeRequested ? 'btn full' : 'btn primary full'}
+            disabled={!canRequestClose || busyAction === 'request'}
+            title={token.closeRequested ? '已送出結案申請' : '由 fulfiller 發起結案申請'}
+            onClick={() => runAction('request', () => onRequestClose(token.tokenId))}
+          >
+            {busyAction === 'request' ? '申請中…' : (token.closeRequested ? '已申請結案' : '申請結案')}
+          </button>
+          <div className="action-note">
+            {token.closeRequested ? '已送出申請，等待 owner 在 Owed to me 區塊確認或退回。' : '先由 fulfiller 送出結案申請。'}
+          </div>
+        </div>
+      ) : null}
 
       {token.sectionKey === 'owedToMe' ? (
         <div className="card-actions">
-          <button type="button" className="btn full" disabled title="結案功能待下一步實作">
-            結案
-          </button>
+          {token.closeRequested ? (
+            <>
+              <div className="action-note">已收到結案申請，請確認或退回。</div>
+              <div className="rating-row">
+                <label className="label" htmlFor={`close-rating-${token.tokenId}`}>Owner rating</label>
+                <select
+                  id={`close-rating-${token.tokenId}`}
+                  className="rating-select"
+                  value={rating}
+                  onChange={(event) => setRating(Number(event.target.value))}
+                  disabled={busyAction === 'confirm' || busyAction === 'reject' || token.syncing}
+                >
+                  <option value={2}>2 · Great</option>
+                  <option value={1}>1 · Neutral</option>
+                  <option value={0}>0 · Bad</option>
+                </select>
+              </div>
+              <div className="card-actions-grid">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!canRespondClose || busyAction === 'confirm'}
+                  onClick={() => runAction('confirm', () => onConfirmClose(token.tokenId, rating))}
+                >
+                  {busyAction === 'confirm' ? '確認中…' : '確認結案'}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!canRespondClose || busyAction === 'reject'}
+                  onClick={() => runAction('reject', () => onRejectClose(token.tokenId))}
+                >
+                  {busyAction === 'reject' ? '退回中…' : '退回申請'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <button type="button" className="btn full" disabled title="等待 fulfiller 送出結案申請後才可操作">
+              等待結案申請
+            </button>
+          )}
         </div>
       ) : null}
     </article>
   );
 }
 
-function SectionBlock({ section, items, loading }) {
+function SectionBlock({ section, items, loading, onRequestClose, onConfirmClose, onRejectClose }) {
   return (
     <section className="iou-section">
       <div className="section-divider">
@@ -96,7 +168,15 @@ function SectionBlock({ section, items, loading }) {
         </div>
       ) : items.length ? (
         <div className="iou-grid">
-          {items.map((token) => <TokenCard key={`${section.key}-${token.tokenId}`} token={{ ...token, sectionKey: section.key }} />)}
+          {items.map((token) => (
+            <TokenCard
+              key={`${section.key}-${token.tokenId}`}
+              token={{ ...token, sectionKey: section.key }}
+              onRequestClose={onRequestClose}
+              onConfirmClose={onConfirmClose}
+              onRejectClose={onRejectClose}
+            />
+          ))}
         </div>
       ) : (
         <div className="empty-state">{section.empty}</div>
@@ -117,22 +197,17 @@ export default function UserIous() {
 
   const sections = useMemo(() => buildSections(results, enriched, submittedAddress), [results, enriched, submittedAddress]);
 
-  async function handleQuery(event) {
-    event.preventDefault();
-    const normalized = normalizeAddress(address);
+  async function loadAddress(normalizedAddress, { retainVisibleData = false } = {}) {
     setError(null);
-    if (!/^0x[0-9a-f]{40}$/.test(normalized)) {
-      setError('請輸入有效的 0x 地址。');
-      return;
+    setSubmittedAddress(normalizedAddress);
+    setLoading(true);
+    if (!retainVisibleData) {
+      setEnriched({});
+      setResults([]);
     }
 
-    setSubmittedAddress(normalized);
-    setLoading(true);
-    setEnriched({});
-    setResults([]);
-
     try {
-      const data = await getUserIOUs(normalized, { limit: 200 });
+      const data = await getUserIOUs(normalizedAddress, { limit: 200 });
       const rows = data.data || [];
       setResults(rows);
       setQueryTime(new Date().toLocaleString());
@@ -157,6 +232,47 @@ export default function UserIous() {
       setEnrichmentLoading(false);
       setLoading(false);
     }
+  }
+
+  async function handleQuery(event) {
+    event.preventDefault();
+    const normalized = normalizeAddress(address);
+    setError(null);
+    if (!/^0x[0-9a-f]{40}$/.test(normalized)) {
+      setError('請輸入有效的 0x 地址。');
+      return;
+    }
+
+    await loadAddress(normalized);
+  }
+
+  async function refreshSubmittedAddress() {
+    if (!submittedAddress) return;
+    await loadAddress(submittedAddress, { retainVisibleData: true });
+  }
+
+  async function runCloseAction(label, action) {
+    try {
+      setError(null);
+      const tx = await action();
+      setQueryTime(`${label} submitted ${new Date().toLocaleString()}`);
+      await tx.wait();
+      await refreshSubmittedAddress();
+    } catch (err) {
+      setError(err.message || String(err));
+    }
+  }
+
+  async function handleRequestClose(tokenId) {
+    return runCloseAction('申請結案', () => api.requestClose(tokenId));
+  }
+
+  async function handleConfirmClose(tokenId, rating) {
+    return runCloseAction('確認結案', () => api.confirmClose(tokenId, rating));
+  }
+
+  async function handleRejectClose(tokenId) {
+    return runCloseAction('退回申請', () => api.rejectClose(tokenId));
   }
 
   const hasResults = results.length > 0;
@@ -242,6 +358,9 @@ export default function UserIous() {
               section={section}
               items={sections[section.key]}
               loading={loading && !hasResults}
+              onRequestClose={handleRequestClose}
+              onConfirmClose={handleConfirmClose}
+              onRejectClose={handleRejectClose}
             />
           ))}
         </div>

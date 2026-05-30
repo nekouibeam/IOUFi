@@ -10,6 +10,10 @@ export function buildTokenView(row, enriched) {
   const displayedDescription = chain?.description ?? row.description ?? '—';
   const displayedServiceType = chain?.serviceType ?? chain?.service_type ?? row.service_type ?? '—';
   const displayedCollateral = chain?.collateral ?? row.collateral ?? row.value ?? null;
+  const displayedCloseRequested = chain?.closeRequested ?? row.close_requested ?? false;
+  const displayedCloseRequestedAt = chain?.closeRequestedAt ?? row.close_requested_at ?? null;
+  const displayedRepPreAwarded = chain?.repPreAwarded ?? row.rep_pre_awarded ?? false;
+  const displayedRepPreAwardedAmount = chain?.repPreAwardedAmount ?? row.rep_pre_awarded_amount ?? null;
   const syncing = String(row.state) !== String(displayedState);
 
   return {
@@ -21,6 +25,10 @@ export function buildTokenView(row, enriched) {
     description: displayedDescription,
     serviceType: displayedServiceType,
     collateral: displayedCollateral,
+    closeRequested: Boolean(displayedCloseRequested),
+    closeRequestedAt: displayedCloseRequestedAt,
+    repPreAwarded: Boolean(displayedRepPreAwarded),
+    repPreAwardedAmount: displayedRepPreAwardedAmount,
     syncing,
   };
 }

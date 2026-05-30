@@ -22,7 +22,6 @@ contract TimeoutRefundTest {
             address(this),
             block.timestamp + 1 days,
             true,
-            50,
             "Pending refund test",
             "General"
         );

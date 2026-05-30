@@ -26,8 +26,8 @@ function prepare(sql) {
   return stmt;
 }
 
-const selectMissing = prepare(`SELECT token_id FROM tokens WHERE description IS NULL OR service_type IS NULL OR collateral IS NULL OR deadline IS NULL OR lifetime_rep_reward IS NULL ORDER BY token_id LIMIT @limit`);
-const updateStmt = prepare(`UPDATE tokens SET collateral=@collateral, deadline=@deadline, description=@description, service_type=@service_type, lifetime_rep_reward=@lifetime_rep_reward, transferable=@transferable, unhappy_close=@unhappy_close, updated_at=@updated_at WHERE token_id=@token_id`);
+const selectMissing = prepare(`SELECT token_id FROM tokens WHERE description IS NULL OR service_type IS NULL OR collateral IS NULL OR deadline IS NULL OR decayed_creator_rep_base IS NULL OR decayed_fulfiller_rep_base IS NULL ORDER BY token_id LIMIT @limit`);
+const updateStmt = prepare(`UPDATE tokens SET collateral=@collateral, deadline=@deadline, description=@description, service_type=@service_type, decayed_creator_rep_base=@decayed_creator_rep_base, decayed_fulfiller_rep_base=@decayed_fulfiller_rep_base, close_requested=@close_requested, close_requested_at=@close_requested_at, rep_pre_awarded=@rep_pre_awarded, rep_pre_awarded_amount=@rep_pre_awarded_amount, transferable=@transferable, unhappy_close=@unhappy_close, updated_at=@updated_at WHERE token_id=@token_id`);
 
 async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
   const baseDelay = 500;
@@ -39,9 +39,14 @@ async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
         deadline: r.deadline !== undefined ? r.deadline : r[5],
         description: r.description || r[6] || null,
         serviceType: r.serviceType || r[7] || r.service_type || null,
-        lifetimeRepReward: r.lifetimeRepReward !== undefined ? r.lifetimeRepReward : r[8],
-        transferable: r.transferable !== undefined ? r.transferable : r[9] ? 1 : 0,
-        unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[10] ? 1 : 0
+        decayedCreatorRepBase: r.decayedCreatorRepBase !== undefined ? r.decayedCreatorRepBase : r[8],
+        decayedFulfillerRepBase: r.decayedFulfillerRepBase !== undefined ? r.decayedFulfillerRepBase : r[9],
+        closeRequested: r.closeRequested !== undefined ? r.closeRequested : r[10] ? 1 : 0,
+        closeRequestedAt: r.closeRequestedAt !== undefined ? r.closeRequestedAt : r[11],
+        repPreAwarded: r.repPreAwarded !== undefined ? r.repPreAwarded : r[12] ? 1 : 0,
+        repPreAwardedAmount: r.repPreAwardedAmount !== undefined ? r.repPreAwardedAmount : r[13],
+        transferable: r.transferable !== undefined ? r.transferable : r[14] ? 1 : 0,
+        unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[15] ? 1 : 0
       };
     } catch (err) {
       const wait = baseDelay * Math.pow(2, attempt);
@@ -70,7 +75,12 @@ async function runBatch(limit = 100) {
           deadline: fetched.deadline,
           description: fetched.description,
           service_type: fetched.serviceType,
-          lifetime_rep_reward: fetched.lifetimeRepReward,
+          decayed_creator_rep_base: fetched.decayedCreatorRepBase,
+          decayed_fulfiller_rep_base: fetched.decayedFulfillerRepBase,
+          close_requested: fetched.closeRequested,
+          close_requested_at: fetched.closeRequestedAt,
+          rep_pre_awarded: fetched.repPreAwarded,
+          rep_pre_awarded_amount: fetched.repPreAwardedAmount,
           transferable: fetched.transferable,
           unhappy_close: fetched.unhappyClose,
           updated_at: Math.floor(Date.now() / 1000)

@@ -23,7 +23,6 @@ export default function App() {
   const [mintForm, setMintForm] = useState({
     fulfiller: '',
     deadlineDays: 7,
-    reward: 10,
     valueEth: '0',
   });
 
@@ -121,7 +120,6 @@ export default function App() {
       fulfiller: mintForm.fulfiller,
       deadlineTs: deadline,
       transferable: false,
-      lifetimeRepReward: Number(mintForm.reward || 0),
       valueEth: mintForm.valueEth || '0',
     }));
   }
@@ -222,13 +220,7 @@ export default function App() {
                     value={mintForm.deadlineDays}
                     onChange={(event) => setMintForm({ ...mintForm, deadlineDays: event.target.value })}
                   />
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Lifetime rep reward"
-                    value={mintForm.reward}
-                    onChange={(event) => setMintForm({ ...mintForm, reward: event.target.value })}
-                  />
+                  <input type="text" value="Reward auto-derived by contract" disabled />
                 </div>
                 <div className="form-grid two">
                   <input

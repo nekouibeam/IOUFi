@@ -558,6 +558,41 @@
   margin-top: 14px;
 }
 
+.action-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.rating-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.rating-select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
+.card-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.card-actions-grid .btn {
+  width: 100%;
+  justify-content: center;
+}
+
 .marketplace-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

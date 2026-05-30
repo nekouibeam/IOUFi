@@ -29,7 +29,12 @@ function ensureColumn(tableName, columnName, definition) {
 function migrateSchema() {
   ensureColumn('tokens', 'collateral', 'collateral INTEGER');
   ensureColumn('tokens', 'deadline', 'deadline INTEGER');
-  ensureColumn('tokens', 'lifetime_rep_reward', 'lifetime_rep_reward INTEGER');
+  ensureColumn('tokens', 'decayed_creator_rep_base', 'decayed_creator_rep_base INTEGER');
+  ensureColumn('tokens', 'decayed_fulfiller_rep_base', 'decayed_fulfiller_rep_base INTEGER');
+  ensureColumn('tokens', 'close_requested', 'close_requested INTEGER DEFAULT 0');
+  ensureColumn('tokens', 'close_requested_at', 'close_requested_at INTEGER');
+  ensureColumn('tokens', 'rep_pre_awarded', 'rep_pre_awarded INTEGER DEFAULT 0');
+  ensureColumn('tokens', 'rep_pre_awarded_amount', 'rep_pre_awarded_amount INTEGER DEFAULT 0');
   ensureColumn('tokens', 'transferable', 'transferable INTEGER DEFAULT 0');
   ensureColumn('tokens', 'unhappy_close', 'unhappy_close INTEGER DEFAULT 0');
 }
@@ -48,8 +53,8 @@ function prepare(sql) {
 const insertProcessedEventStmt = prepare(`INSERT INTO processed_events(tx_hash, log_index, block_number, token_id, event_name, event_data) VALUES(@tx_hash, @log_index, @block_number, @token_id, @event_name, @event_data)`);
 
 const insertOrUpdateTokenStmt = prepare(`
-INSERT INTO tokens(token_id, creator, fulfiller, owner, state, description, service_type, collateral, deadline, lifetime_rep_reward, transferable, unhappy_close, is_burned, created_at, updated_at, last_block, last_tx_hash, last_log_index)
-VALUES(@token_id, @creator, @fulfiller, @owner, @state, @description, @service_type, @collateral, @deadline, @lifetime_rep_reward, @transferable, @unhappy_close, @is_burned, @created_at, @updated_at, @last_block, @last_tx_hash, @last_log_index)
+INSERT INTO tokens(token_id, creator, fulfiller, owner, state, description, service_type, collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, is_burned, created_at, updated_at, last_block, last_tx_hash, last_log_index)
+VALUES(@token_id, @creator, @fulfiller, @owner, @state, @description, @service_type, @collateral, @deadline, @decayed_creator_rep_base, @decayed_fulfiller_rep_base, @close_requested, @close_requested_at, @rep_pre_awarded, @rep_pre_awarded_amount, @transferable, @unhappy_close, @is_burned, @created_at, @updated_at, @last_block, @last_tx_hash, @last_log_index)
 ON CONFLICT(token_id) DO UPDATE SET
   creator=COALESCE(excluded.creator, creator),
   fulfiller=COALESCE(excluded.fulfiller, fulfiller),
@@ -59,7 +64,12 @@ ON CONFLICT(token_id) DO UPDATE SET
   service_type=COALESCE(excluded.service_type, service_type),
   collateral=COALESCE(excluded.collateral, collateral),
   deadline=COALESCE(excluded.deadline, deadline),
-  lifetime_rep_reward=COALESCE(excluded.lifetime_rep_reward, lifetime_rep_reward),
+  decayed_creator_rep_base=COALESCE(excluded.decayed_creator_rep_base, decayed_creator_rep_base),
+  decayed_fulfiller_rep_base=COALESCE(excluded.decayed_fulfiller_rep_base, decayed_fulfiller_rep_base),
+  close_requested=COALESCE(excluded.close_requested, close_requested),
+  close_requested_at=COALESCE(excluded.close_requested_at, close_requested_at),
+  rep_pre_awarded=COALESCE(excluded.rep_pre_awarded, rep_pre_awarded),
+  rep_pre_awarded_amount=COALESCE(excluded.rep_pre_awarded_amount, rep_pre_awarded_amount),
   transferable=COALESCE(excluded.transferable, transferable),
   unhappy_close=COALESCE(excluded.unhappy_close, unhappy_close),
   is_burned=COALESCE(excluded.is_burned, is_burned),
@@ -78,7 +88,12 @@ UPDATE tokens SET
   deadline=COALESCE(@deadline, deadline),
   description=COALESCE(@description, description),
   service_type=COALESCE(@service_type, service_type),
-  lifetime_rep_reward=COALESCE(@lifetime_rep_reward, lifetime_rep_reward),
+  decayed_creator_rep_base=COALESCE(@decayed_creator_rep_base, decayed_creator_rep_base),
+  decayed_fulfiller_rep_base=COALESCE(@decayed_fulfiller_rep_base, decayed_fulfiller_rep_base),
+  close_requested=COALESCE(@close_requested, close_requested),
+  close_requested_at=COALESCE(@close_requested_at, close_requested_at),
+  rep_pre_awarded=COALESCE(@rep_pre_awarded, rep_pre_awarded),
+  rep_pre_awarded_amount=COALESCE(@rep_pre_awarded_amount, rep_pre_awarded_amount),
   transferable=COALESCE(@transferable, transferable),
   unhappy_close=COALESCE(@unhappy_close, unhappy_close),
   updated_at=@updated_at,
@@ -128,7 +143,7 @@ function extractEventMeta(event) {
 async function replayEventsInRange(fromBlock, toBlock) {
   if (!contract || fromBlock > toBlock) return;
 
-  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'ReputationAwarded', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
   for (const eventName of eventNames) {
     const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
     for (const log of logs) {
@@ -143,8 +158,12 @@ async function replayEventsInRange(fromBlock, toBlock) {
           await processEventIfConfirmed('IOUSettled', { tokenId: log.args?.tokenId, fee: log.args?.fee, payout: log.args?.payout }, log);
         } else if (eventName === 'IOURefunded') {
           await processEventIfConfirmed('IOURefunded', { tokenId: log.args?.tokenId, amount: log.args?.amount }, log);
-        } else if (eventName === 'ReputationAwarded') {
-          await processEventIfConfirmed('ReputationAwarded', { tokenId: log.args?.tokenId, account: log.args?.account, amount: log.args?.amount }, log);
+        } else if (eventName === 'CloseRequested') {
+          await processEventIfConfirmed('CloseRequested', { tokenId: log.args?.tokenId, fulfiller: log.args?.fulfiller }, log);
+        } else if (eventName === 'CloseConfirmed') {
+          await processEventIfConfirmed('CloseConfirmed', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
+        } else if (eventName === 'CloseRejected') {
+          await processEventIfConfirmed('CloseRejected', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
         } else if (eventName === 'TreasuryUpdated') {
           await processEventIfConfirmed('TreasuryUpdated', { treasury: log.args?.treasury }, log);
         } else if (eventName === 'ReputationLedgerUpdated') {
@@ -166,9 +185,14 @@ function normalizeIOUSnapshot(result) {
     deadline: result.deadline !== undefined ? result.deadline : result[5],
     description: result.description || result[6] || null,
     serviceType: result.serviceType || result[7] || result.service_type || null,
-    lifetimeRepReward: result.lifetimeRepReward !== undefined ? result.lifetimeRepReward : result[8],
-    transferable: result.transferable !== undefined ? result.transferable : result[9],
-    unhappyClose: result.unhappyClose !== undefined ? result.unhappyClose : result[10],
+    decayedCreatorRepBase: result.decayedCreatorRepBase !== undefined ? result.decayedCreatorRepBase : result[8],
+    decayedFulfillerRepBase: result.decayedFulfillerRepBase !== undefined ? result.decayedFulfillerRepBase : result[9],
+    closeRequested: result.closeRequested !== undefined ? result.closeRequested : result[10],
+    closeRequestedAt: result.closeRequestedAt !== undefined ? result.closeRequestedAt : result[11],
+    repPreAwarded: result.repPreAwarded !== undefined ? result.repPreAwarded : result[12],
+    repPreAwardedAmount: result.repPreAwardedAmount !== undefined ? result.repPreAwardedAmount : result[13],
+    transferable: result.transferable !== undefined ? result.transferable : result[14],
+    unhappyClose: result.unhappyClose !== undefined ? result.unhappyClose : result[15],
   };
 }
 
@@ -182,7 +206,12 @@ function updateTokenSnapshot(tokenId, snapshot, eventContext) {
     deadline: snapshot.deadline ?? null,
     description: snapshot.description ?? null,
     service_type: snapshot.serviceType ?? null,
-    lifetime_rep_reward: snapshot.lifetimeRepReward ?? null,
+    decayed_creator_rep_base: snapshot.decayedCreatorRepBase ?? null,
+    decayed_fulfiller_rep_base: snapshot.decayedFulfillerRepBase ?? null,
+    close_requested: snapshot.closeRequested ? 1 : 0,
+    close_requested_at: snapshot.closeRequestedAt ?? null,
+    rep_pre_awarded: snapshot.repPreAwarded ? 1 : 0,
+    rep_pre_awarded_amount: snapshot.repPreAwardedAmount ?? null,
     transferable: snapshot.transferable ? 1 : 0,
     unhappy_close: snapshot.unhappyClose ? 1 : 0,
     updated_at: eventContext.timestamp || Math.floor(Date.now() / 1000),
@@ -206,7 +235,12 @@ function applyEventToTokens(eventName, data) {
       service_type: data.serviceType || null,
       collateral: data.collateral ?? null,
       deadline: data.deadline ?? null,
-      lifetime_rep_reward: data.lifetimeRepReward ?? null,
+      decayed_creator_rep_base: data.decayedCreatorRepBase ?? null,
+      decayed_fulfiller_rep_base: data.decayedFulfillerRepBase ?? null,
+      close_requested: data.closeRequested ? 1 : 0,
+      close_requested_at: data.closeRequestedAt ?? null,
+      rep_pre_awarded: data.repPreAwarded ? 1 : 0,
+      rep_pre_awarded_amount: data.repPreAwardedAmount ?? null,
       transferable: data.transferable ? 1 : 0,
       unhappy_close: data.unhappyClose ? 1 : 0,
       is_burned: 0,
@@ -216,8 +250,8 @@ function applyEventToTokens(eventName, data) {
       last_tx_hash: data.txHash,
       last_log_index: data.logIndex
     });
-  } else if (eventName === 'IOUAccepted' || eventName === 'IOUSettled' || eventName === 'IOURefunded') {
-    const stateMap = { IOUAccepted: 1, IOUSettled: 2, IOURefunded: 3 };
+  } else if (eventName === 'IOUAccepted' || eventName === 'IOUSettled' || eventName === 'IOURefunded' || eventName === 'CloseRequested' || eventName === 'CloseConfirmed' || eventName === 'CloseRejected') {
+    const stateMap = { IOUAccepted: 1, IOUSettled: 2, IOURefunded: 3, CloseRequested: 1, CloseConfirmed: 2, CloseRejected: 1 };
     updateStateStmt.run({ token_id, state: stateMap[eventName] ?? null, updated_at: data.timestamp || now, last_block: data.blockNumber, last_tx_hash: data.txHash, last_log_index: data.logIndex });
   } else if (eventName === 'Transfer') {
     const to = data.to;
@@ -312,9 +346,10 @@ async function processEventIfConfirmed(eventName, args, event) {
       payload.payout = args.payout ?? args[2] ?? null;
     } else if (eventName === 'IOURefunded') {
       payload.amount = args.amount ?? args[1] ?? null;
-    } else if (eventName === 'ReputationAwarded') {
-      payload.account = args.account || args[1] || null;
-      payload.amount = args.amount ?? args[2] ?? null;
+    } else if (eventName === 'CloseRequested') {
+      payload.fulfiller = args.fulfiller || args[1] || null;
+    } else if (eventName === 'CloseConfirmed' || eventName === 'CloseRejected') {
+      payload.owner = args.owner || args[1] || null;
     } else if (eventName === 'TreasuryUpdated') {
       payload.treasury = args.treasury || args[0] || null;
     } else if (eventName === 'ReputationLedgerUpdated') {
@@ -331,7 +366,7 @@ async function processEventIfConfirmed(eventName, args, event) {
 
     applyEventToTokens(eventName, payload);
 
-    if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded'].includes(eventName)) {
+    if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected'].includes(eventName)) {
       try {
         const fetched = await fetchIOUWithRetry(tokenId);
         if (fetched) {
@@ -353,7 +388,7 @@ async function processEventIfConfirmed(eventName, args, event) {
 async function replayEventsInRange(fromBlock, toBlock) {
   if (!contract || fromBlock > toBlock) return;
 
-  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'ReputationAwarded', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
   for (const eventName of eventNames) {
     const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
     for (const log of logs) {
@@ -368,8 +403,12 @@ async function replayEventsInRange(fromBlock, toBlock) {
           await processEventIfConfirmed('IOUSettled', { tokenId: log.args?.tokenId, fee: log.args?.fee, payout: log.args?.payout }, log);
         } else if (eventName === 'IOURefunded') {
           await processEventIfConfirmed('IOURefunded', { tokenId: log.args?.tokenId, amount: log.args?.amount }, log);
-        } else if (eventName === 'ReputationAwarded') {
-          await processEventIfConfirmed('ReputationAwarded', { tokenId: log.args?.tokenId, account: log.args?.account, amount: log.args?.amount }, log);
+        } else if (eventName === 'CloseRequested') {
+          await processEventIfConfirmed('CloseRequested', { tokenId: log.args?.tokenId, fulfiller: log.args?.fulfiller }, log);
+        } else if (eventName === 'CloseConfirmed') {
+          await processEventIfConfirmed('CloseConfirmed', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
+        } else if (eventName === 'CloseRejected') {
+          await processEventIfConfirmed('CloseRejected', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
         } else if (eventName === 'TreasuryUpdated') {
           await processEventIfConfirmed('TreasuryUpdated', { treasury: log.args?.treasury }, log);
         } else if (eventName === 'ReputationLedgerUpdated') {
@@ -423,8 +462,16 @@ if (contract) {
     try { processEventIfConfirmed('IOURefunded', { tokenId, amount }, event); } catch (err) { console.error(err); }
   });
 
-  contract.on('ReputationAwarded', (tokenId, account, amount, event) => {
-    try { processEventIfConfirmed('ReputationAwarded', { tokenId, account, amount }, event); } catch (err) { console.error(err); }
+  contract.on('CloseRequested', (tokenId, fulfiller, event) => {
+    try { processEventIfConfirmed('CloseRequested', { tokenId, fulfiller }, event); } catch (err) { console.error(err); }
+  });
+
+  contract.on('CloseConfirmed', (tokenId, owner, event) => {
+    try { processEventIfConfirmed('CloseConfirmed', { tokenId, owner }, event); } catch (err) { console.error(err); }
+  });
+
+  contract.on('CloseRejected', (tokenId, owner, event) => {
+    try { processEventIfConfirmed('CloseRejected', { tokenId, owner }, event); } catch (err) { console.error(err); }
   });
 
   contract.on('TreasuryUpdated', (treasury, event) => {

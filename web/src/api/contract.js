@@ -95,10 +95,10 @@ export async function getProposal(proposalId) {
   return contract.proposals(BigInt(proposalId));
 }
 
-export async function mintIOU({ fulfiller, deadlineTs, transferable = false, lifetimeRepReward = 0, valueEth = '0', description = '', serviceType = '' }) {
+export async function mintIOU({ fulfiller, deadlineTs, transferable = false, valueEth = '0', description = '', serviceType = '' }) {
   const c = await getContract('IOUNFT');
   const value = valueEth && valueEth !== '0' ? ethers.parseEther(valueEth) : 0n;
-  return c.mintIOU(fulfiller, BigInt(deadlineTs), transferable, BigInt(lifetimeRepReward), description, serviceType, { value });
+  return c.mintIOU(fulfiller, BigInt(deadlineTs), transferable, description, serviceType, { value });
 }
 
 export async function acceptIOU(tokenId) {
@@ -124,4 +124,19 @@ export async function refundPending(tokenId) {
 export async function timeoutClaim(tokenId) {
   const c = await getContract('IOUNFT');
   return c.timeoutClaim(BigInt(tokenId));
+}
+
+export async function requestClose(tokenId) {
+  const c = await getContract('IOUNFT');
+  return c.requestClose(BigInt(tokenId));
+}
+
+export async function confirmClose(tokenId, rating) {
+  const c = await getContract('IOUNFT');
+  return c.confirmClose(BigInt(tokenId), Number(rating));
+}
+
+export async function rejectClose(tokenId) {
+  const c = await getContract('IOUNFT');
+  return c.rejectClose(BigInt(tokenId));
 }
