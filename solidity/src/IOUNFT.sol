@@ -31,6 +31,13 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         uint256 repPreAwardedAmount;
         bool transferable;
         bool unhappyClose;
+        // Transfer-related
+        bool transferRequested;
+        address transferTo;
+        bool transferNewOwnerConfirmed;
+        bool transferFulfillerConfirmed;
+        uint256 transferRequestedAt;
+        uint256 transferFeePaid;
     }
 
     uint256 public nextTokenId = 1;
@@ -47,8 +54,15 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
     event CloseRequested(uint256 indexed tokenId, address indexed fulfiller);
     event CloseConfirmed(uint256 indexed tokenId, address indexed owner);
     event CloseRejected(uint256 indexed tokenId, address indexed owner);
+    event TransferInitiated(uint256 indexed tokenId, address indexed from, address indexed to);
+    event TransferConfirmed(uint256 indexed tokenId, address indexed by);
+    event TransferCompleted(uint256 indexed tokenId, address indexed from, address indexed to, uint256 fee);
+    event TransferRejected(uint256 indexed tokenId, address indexed by);
     event TreasuryUpdated(address indexed treasury);
     event ReputationLedgerUpdated(address indexed reputationLedger);
+
+    // Fixed transfer fee: 0.0015 ETH (1_500_000_000_000_000 wei)
+    uint256 public constant transferFeeWei = 1_500_000_000_000_000;
 
     constructor(address treasury_, address reputationLedger_) ERC721("IOUFi IOU", "IOU") Ownable(msg.sender) {
         require(treasury_ != address(0), "IOUNFT: zero treasury");
@@ -71,6 +85,105 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
     function setMarketplaceFeeBps(uint256 feeBps) external onlyOwner {
         require(feeBps <= 2000, "IOUNFT: fee too high");
         marketplaceFeeBps = feeBps;
+    }
+
+    /**
+     * @notice Owner of token initiates transfer request to `to` (social IOU only)
+     */
+    function startTransfer(uint256 tokenId, address to) external {
+        require(to != address(0), "IOUNFT: zero target");
+        IOUData storage iou = ious[tokenId];
+        require(_ownerOf(tokenId) != address(0), "IOUNFT: invalid token");
+        require(msg.sender == ownerOf(tokenId), "IOUNFT: only owner");
+        require(iou.state == State.Active, "IOUNFT: not active");
+        require(iou.collateral == 0, "IOUNFT: only social IOU transferable");
+        require(!iou.transferRequested, "IOUNFT: transfer already requested");
+
+        iou.transferRequested = true;
+        iou.transferTo = to;
+        iou.transferNewOwnerConfirmed = false;
+        iou.transferFulfillerConfirmed = false;
+        iou.transferRequestedAt = block.timestamp;
+        iou.transferFeePaid = 0;
+
+        emit TransferInitiated(tokenId, msg.sender, to);
+    }
+
+    /**
+     * @notice New owner confirms and pays fee (payable). If fulfiller already confirmed, executes transfer.
+     */
+    function confirmTransferByNewOwner(uint256 tokenId) external payable nonReentrant {
+        IOUData storage iou = ious[tokenId];
+        require(iou.transferRequested, "IOUNFT: no transfer requested");
+        require(msg.sender == iou.transferTo, "IOUNFT: not transfer target");
+        require(msg.value == transferFeeWei, "IOUNFT: invalid fee");
+
+        // accept payment into contract balance
+        iou.transferNewOwnerConfirmed = true;
+        iou.transferFeePaid = msg.value;
+
+        emit TransferConfirmed(tokenId, msg.sender);
+
+        if (iou.transferFulfillerConfirmed) {
+            _executeTransfer(tokenId);
+        }
+    }
+
+    /**
+     * @notice Fulfiller must confirm the transfer. If new owner already confirmed, executes transfer.
+     */
+    function confirmTransferByFulfiller(uint256 tokenId) external {
+        IOUData storage iou = ious[tokenId];
+        require(iou.transferRequested, "IOUNFT: no transfer requested");
+        require(msg.sender == iou.fulfiller, "IOUNFT: only fulfiller");
+
+        iou.transferFulfillerConfirmed = true;
+        emit TransferConfirmed(tokenId, msg.sender);
+
+        if (iou.transferNewOwnerConfirmed) {
+            _executeTransfer(tokenId);
+        }
+    }
+
+    /**
+     * @notice Reject a pending transfer. Can be called by owner, newOwner or fulfiller.
+     */
+    function rejectTransfer(uint256 tokenId) external nonReentrant {
+        IOUData storage iou = ious[tokenId];
+        require(iou.transferRequested, "IOUNFT: no transfer requested");
+        address owner = ownerOf(tokenId);
+        require(msg.sender == owner || msg.sender == iou.transferTo || msg.sender == iou.fulfiller, "IOUNFT: not authorized");
+
+        // refund fee if paid
+        uint256 paid = iou.transferFeePaid;
+        if (paid > 0) {
+            // reset before external call
+            iou.transferFeePaid = 0;
+            _transferEth(payable(iou.transferTo), paid);
+        }
+
+        // clear transfer request
+        iou.transferRequested = false;
+        iou.transferTo = address(0);
+        iou.transferNewOwnerConfirmed = false;
+        iou.transferFulfillerConfirmed = false;
+        iou.transferRequestedAt = 0;
+
+        emit TransferRejected(tokenId, msg.sender);
+    }
+
+    function modifyPending(uint256 tokenId, uint256 newDeadline, string calldata newDescription, string calldata newServiceType) external {
+        IOUData storage iou = _mustBePending(tokenId);
+        require(msg.sender == iou.creator, "IOUNFT: not creator");
+        require(newDeadline > block.timestamp, "IOUNFT: invalid deadline");
+        require(bytes(newDescription).length > 0, "IOUNFT: description required");
+        require(bytes(newServiceType).length > 0, "IOUNFT: serviceType required");
+
+        iou.deadline = newDeadline;
+        iou.description = newDescription;
+        iou.serviceType = newServiceType;
+        // transferability is intentionally not modified in this version.
+        emit IOUCreated(tokenId, iou.creator, iou.fulfiller, iou.collateral);
     }
 
     function mintIOU(address fulfiller, uint256 deadline, bool transferable, string calldata description, string calldata serviceType) external payable returns (uint256 tokenId) {
@@ -110,7 +223,13 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             repPreAwarded: false,
             repPreAwardedAmount: 0,
             transferable: transferable,
-            unhappyClose: false
+            unhappyClose: false,
+            transferRequested: false,
+            transferTo: address(0),
+            transferNewOwnerConfirmed: false,
+            transferFulfillerConfirmed: false,
+            transferRequestedAt: 0,
+            transferFeePaid: 0
         });
 
         emit IOUCreated(tokenId, msg.sender, fulfiller, msg.value);
@@ -297,6 +416,35 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         emit CloseRejected(tokenId, msg.sender);
     }
 
+    function _executeTransfer(uint256 tokenId) internal {
+        IOUData storage iou = ious[tokenId];
+        require(iou.transferRequested, "IOUNFT: no transfer requested");
+        address from = ownerOf(tokenId);
+        address to = iou.transferTo;
+        require(to != address(0), "IOUNFT: zero target");
+
+        uint256 paid = iou.transferFeePaid;
+        uint256 fee = transferFeeWei;
+
+        // clear transfer flags early to avoid reentrancy issues
+        iou.transferRequested = false;
+        iou.transferTo = address(0);
+        iou.transferNewOwnerConfirmed = false;
+        iou.transferFulfillerConfirmed = false;
+        iou.transferRequestedAt = 0;
+        iou.transferFeePaid = 0;
+
+        // perform internal transfer using base implementation
+        super._update(to, tokenId, address(0));
+
+        // collect the fixed fee into treasury
+        if (fee > 0 && paid >= fee) {
+            _transferEth(payable(treasury), fee);
+        }
+
+        emit TransferCompleted(tokenId, from, to, fee);
+    }
+
     function _finalizeSettlement(uint256 tokenId, uint8 rating, uint256 fee, uint256 payout) internal {
         IOUData storage iou = ious[tokenId];
         iou.state = State.Settled;
@@ -318,12 +466,12 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
 
             // New transfer rules:
             // - Active: allow transfer only for Social IOUs (collateral == 0). Bounty IOUs (collateral > 0) are locked.
-            // - Pending: allow transfer only when mint-time `transferable` == true.
+            // - Pending: disallow transfers.
             // - Settled / Cancelled: disallow transfers.
             if (iou.state == State.Active) {
                 require(iou.collateral == 0, "IOUNFT: active bounty locked");
             } else if (iou.state == State.Pending) {
-                require(iou.transferable, "IOUNFT: token not transferable");
+                revert("IOUNFT: pending token not transferable");
             } else {
                 revert("IOUNFT: token not transferable in current state");
             }

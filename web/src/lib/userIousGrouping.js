@@ -14,6 +14,12 @@ export function buildTokenView(row, enriched) {
   const displayedCloseRequestedAt = chain?.closeRequestedAt ?? row.close_requested_at ?? null;
   const displayedRepPreAwarded = chain?.repPreAwarded ?? row.rep_pre_awarded ?? false;
   const displayedRepPreAwardedAmount = chain?.repPreAwardedAmount ?? row.rep_pre_awarded_amount ?? null;
+  const displayedTransferRequested = chain?.transferRequested ?? row.transfer_requested ?? false;
+  const displayedTransferTo = chain?.transferTo ?? row.transfer_to ?? null;
+  const displayedTransferNewOwnerConfirmed = chain?.transferNewOwnerConfirmed ?? row.transfer_new_owner_confirmed ?? false;
+  const displayedTransferFulfillerConfirmed = chain?.transferFulfillerConfirmed ?? row.transfer_fulfiller_confirmed ?? false;
+  const displayedTransferRequestedAt = chain?.transferRequestedAt ?? row.transfer_requested_at ?? null;
+  const displayedTransferFeePaid = chain?.transferFeePaid ?? row.transfer_fee_paid ?? null;
   const syncing = String(row.state) !== String(displayedState);
 
   return {
@@ -29,6 +35,12 @@ export function buildTokenView(row, enriched) {
     closeRequestedAt: displayedCloseRequestedAt,
     repPreAwarded: Boolean(displayedRepPreAwarded),
     repPreAwardedAmount: displayedRepPreAwardedAmount,
+    transferRequested: Boolean(displayedTransferRequested),
+    transferTo: displayedTransferTo,
+    transferNewOwnerConfirmed: Boolean(displayedTransferNewOwnerConfirmed),
+    transferFulfillerConfirmed: Boolean(displayedTransferFulfillerConfirmed),
+    transferRequestedAt: displayedTransferRequestedAt,
+    transferFeePaid: displayedTransferFeePaid,
     syncing,
   };
 }

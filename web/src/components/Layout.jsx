@@ -8,6 +8,7 @@ export default function Layout({ children }) {
     { to: '/create', label: '發放人情債', icon: '＋' },
     { to: '/accept', label: '待確認', icon: '✓' },
     { to: '/ious', label: 'IOU 查詢', icon: '⇄' },
+    { to: '/transfer', label: '轉送', icon: '⇆' },
     { to: '/market', label: 'Favor 市場', icon: '⊡' },
     { to: '/dao', label: 'DAO 投票', icon: '◈' },
     { to: '/treasury', label: 'Treasury', icon: '◎' },

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { ethers } = require('ethers');
 const { DatabaseSync } = require('node:sqlite');
+const addressesByChain = require('../../web/src/contracts/addresses.json');
 
 const RPC = process.env.JSON_RPC_URL || 'http://127.0.0.1:8545';
 const IOUNFT_ADDRESS = process.env.IOUNFT_ADDRESS || process.env.CONTRACT_ADDRESS || '';
@@ -15,6 +16,8 @@ const IOUNFT_ABI = require('../../web/src/contracts/IOUNFT.json').abi;
 const provider = new ethers.JsonRpcProvider(RPC);
 
 const db = new DatabaseSync(DB_PATH);
+let contract = null;
+let contractAddress = '';
 
 // initialize schema
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
@@ -37,6 +40,12 @@ function migrateSchema() {
   ensureColumn('tokens', 'rep_pre_awarded_amount', 'rep_pre_awarded_amount INTEGER DEFAULT 0');
   ensureColumn('tokens', 'transferable', 'transferable INTEGER DEFAULT 0');
   ensureColumn('tokens', 'unhappy_close', 'unhappy_close INTEGER DEFAULT 0');
+   ensureColumn('tokens', 'transfer_requested', 'transfer_requested INTEGER DEFAULT 0');
+   ensureColumn('tokens', 'transfer_to', 'transfer_to TEXT');
+   ensureColumn('tokens', 'transfer_new_owner_confirmed', 'transfer_new_owner_confirmed INTEGER DEFAULT 0');
+   ensureColumn('tokens', 'transfer_fulfiller_confirmed', 'transfer_fulfiller_confirmed INTEGER DEFAULT 0');
+   ensureColumn('tokens', 'transfer_requested_at', 'transfer_requested_at INTEGER');
+   ensureColumn('tokens', 'transfer_fee_paid', 'transfer_fee_paid INTEGER DEFAULT 0');
 }
 
 migrateSchema();
@@ -53,8 +62,8 @@ function prepare(sql) {
 const insertProcessedEventStmt = prepare(`INSERT INTO processed_events(tx_hash, log_index, block_number, token_id, event_name, event_data) VALUES(@tx_hash, @log_index, @block_number, @token_id, @event_name, @event_data)`);
 
 const insertOrUpdateTokenStmt = prepare(`
-INSERT INTO tokens(token_id, creator, fulfiller, owner, state, description, service_type, collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, is_burned, created_at, updated_at, last_block, last_tx_hash, last_log_index)
-VALUES(@token_id, @creator, @fulfiller, @owner, @state, @description, @service_type, @collateral, @deadline, @decayed_creator_rep_base, @decayed_fulfiller_rep_base, @close_requested, @close_requested_at, @rep_pre_awarded, @rep_pre_awarded_amount, @transferable, @unhappy_close, @is_burned, @created_at, @updated_at, @last_block, @last_tx_hash, @last_log_index)
+INSERT INTO tokens(token_id, creator, fulfiller, owner, state, description, service_type, collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, transfer_requested, transfer_to, transfer_new_owner_confirmed, transfer_fulfiller_confirmed, transfer_requested_at, transfer_fee_paid, is_burned, created_at, updated_at, last_block, last_tx_hash, last_log_index)
+VALUES(@token_id, @creator, @fulfiller, @owner, @state, @description, @service_type, @collateral, @deadline, @decayed_creator_rep_base, @decayed_fulfiller_rep_base, @close_requested, @close_requested_at, @rep_pre_awarded, @rep_pre_awarded_amount, @transferable, @unhappy_close, @transfer_requested, @transfer_to, @transfer_new_owner_confirmed, @transfer_fulfiller_confirmed, @transfer_requested_at, @transfer_fee_paid, @is_burned, @created_at, @updated_at, @last_block, @last_tx_hash, @last_log_index)
 ON CONFLICT(token_id) DO UPDATE SET
   creator=COALESCE(excluded.creator, creator),
   fulfiller=COALESCE(excluded.fulfiller, fulfiller),
@@ -72,6 +81,12 @@ ON CONFLICT(token_id) DO UPDATE SET
   rep_pre_awarded_amount=COALESCE(excluded.rep_pre_awarded_amount, rep_pre_awarded_amount),
   transferable=COALESCE(excluded.transferable, transferable),
   unhappy_close=COALESCE(excluded.unhappy_close, unhappy_close),
+  transfer_requested=COALESCE(excluded.transfer_requested, transfer_requested),
+  transfer_to=COALESCE(excluded.transfer_to, transfer_to),
+  transfer_new_owner_confirmed=COALESCE(excluded.transfer_new_owner_confirmed, transfer_new_owner_confirmed),
+  transfer_fulfiller_confirmed=COALESCE(excluded.transfer_fulfiller_confirmed, transfer_fulfiller_confirmed),
+  transfer_requested_at=COALESCE(excluded.transfer_requested_at, transfer_requested_at),
+  transfer_fee_paid=COALESCE(excluded.transfer_fee_paid, transfer_fee_paid),
   is_burned=COALESCE(excluded.is_burned, is_burned),
   updated_at=excluded.updated_at,
   last_block=excluded.last_block,
@@ -96,6 +111,57 @@ UPDATE tokens SET
   rep_pre_awarded_amount=COALESCE(@rep_pre_awarded_amount, rep_pre_awarded_amount),
   transferable=COALESCE(@transferable, transferable),
   unhappy_close=COALESCE(@unhappy_close, unhappy_close),
+  transfer_requested=COALESCE(@transfer_requested, transfer_requested),
+  transfer_to=COALESCE(@transfer_to, transfer_to),
+  transfer_new_owner_confirmed=COALESCE(@transfer_new_owner_confirmed, transfer_new_owner_confirmed),
+  transfer_fulfiller_confirmed=COALESCE(@transfer_fulfiller_confirmed, transfer_fulfiller_confirmed),
+  transfer_requested_at=COALESCE(@transfer_requested_at, transfer_requested_at),
+  transfer_fee_paid=COALESCE(@transfer_fee_paid, transfer_fee_paid),
+  updated_at=@updated_at,
+  last_block=@last_block,
+  last_tx_hash=@last_tx_hash,
+  last_log_index=@last_log_index
+WHERE token_id=@token_id
+`);
+
+const selectTokenByIdStmt = prepare(`SELECT token_id, transfer_to, transfer_requested FROM tokens WHERE token_id=@token_id`);
+
+const setTransferInitiatedStmt = prepare(`
+UPDATE tokens SET
+  transfer_requested=1,
+  transfer_to=@transfer_to,
+  transfer_new_owner_confirmed=0,
+  transfer_fulfiller_confirmed=0,
+  transfer_requested_at=@transfer_requested_at,
+  transfer_fee_paid=0,
+  updated_at=@updated_at,
+  last_block=@last_block,
+  last_tx_hash=@last_tx_hash,
+  last_log_index=@last_log_index
+WHERE token_id=@token_id
+`);
+
+const setTransferConfirmedStmt = prepare(`
+UPDATE tokens SET
+  transfer_requested=1,
+  transfer_new_owner_confirmed=COALESCE(@transfer_new_owner_confirmed, transfer_new_owner_confirmed),
+  transfer_fulfiller_confirmed=COALESCE(@transfer_fulfiller_confirmed, transfer_fulfiller_confirmed),
+  transfer_fee_paid=COALESCE(@transfer_fee_paid, transfer_fee_paid),
+  updated_at=@updated_at,
+  last_block=@last_block,
+  last_tx_hash=@last_tx_hash,
+  last_log_index=@last_log_index
+WHERE token_id=@token_id
+`);
+
+const clearTransferStmt = prepare(`
+UPDATE tokens SET
+  transfer_requested=0,
+  transfer_to=NULL,
+  transfer_new_owner_confirmed=0,
+  transfer_fulfiller_confirmed=0,
+  transfer_requested_at=NULL,
+  transfer_fee_paid=0,
   updated_at=@updated_at,
   last_block=@last_block,
   last_tx_hash=@last_tx_hash,
@@ -113,11 +179,94 @@ const insertOrReplaceLastSync = prepare(`INSERT OR REPLACE INTO last_sync(id, la
 const selectLastSync = prepare(`SELECT last_block FROM last_sync WHERE id=1`);
 const countTokensStmt = prepare(`SELECT COUNT(1) AS total FROM tokens`);
 
-const contract = IOUNFT_ADDRESS ? new ethers.Contract(IOUNFT_ADDRESS, IOUNFT_ABI, provider) : null;
 let syncTimer = null;
 let syncInFlight = false;
 
 console.log('Indexer starting', { RPC, IOUNFT_ADDRESS, DB_PATH, CONFIRMATIONS });
+
+async function resolveIOUNFTAddress() {
+  const network = await provider.getNetwork();
+  const chainId = String(network.chainId);
+  const chainScopedAddress = addressesByChain?.[chainId]?.IOUNFT;
+
+  if (chainScopedAddress) {
+    return chainScopedAddress;
+  }
+
+  return IOUNFT_ADDRESS || '';
+}
+
+async function initContract() {
+  const resolvedAddress = await resolveIOUNFTAddress();
+  if (!resolvedAddress) {
+    contract = null;
+    contractAddress = '';
+    return null;
+  }
+
+  contractAddress = resolvedAddress;
+  contract = new ethers.Contract(resolvedAddress, IOUNFT_ABI, provider);
+  console.log('Using IOUNFT contract', contractAddress);
+  return contract;
+}
+
+function wireContractListeners(targetContract) {
+  targetContract.on('Transfer', (from, to, tokenId, event) => {
+    try { processEventIfConfirmed('Transfer', { from, to, tokenId }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('IOUCreated', (tokenId, creator, fulfiller, collateral, event) => {
+    try { processEventIfConfirmed('IOUCreated', { tokenId, creator, fulfiller, collateral }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('IOUAccepted', (tokenId, fulfiller, event) => {
+    try { processEventIfConfirmed('IOUAccepted', { tokenId, fulfiller }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('IOUSettled', (tokenId, fee, payout, event) => {
+    try { processEventIfConfirmed('IOUSettled', { tokenId, fee, payout }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('IOURefunded', (tokenId, amount, event) => {
+    try { processEventIfConfirmed('IOURefunded', { tokenId, amount }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('CloseRequested', (tokenId, fulfiller, event) => {
+    try { processEventIfConfirmed('CloseRequested', { tokenId, fulfiller }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('CloseConfirmed', (tokenId, owner, event) => {
+    try { processEventIfConfirmed('CloseConfirmed', { tokenId, owner }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('CloseRejected', (tokenId, owner, event) => {
+    try { processEventIfConfirmed('CloseRejected', { tokenId, owner }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('TransferInitiated', (tokenId, from, to, event) => {
+    try { processEventIfConfirmed('TransferInitiated', { tokenId, from, to }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('TransferConfirmed', (tokenId, by, event) => {
+    try { processEventIfConfirmed('TransferConfirmed', { tokenId, by }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('TransferCompleted', (tokenId, from, to, fee, event) => {
+    try { processEventIfConfirmed('TransferCompleted', { tokenId, from, to, fee }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('TransferRejected', (tokenId, by, event) => {
+    try { processEventIfConfirmed('TransferRejected', { tokenId, by }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('TreasuryUpdated', (treasury, event) => {
+    try { processEventIfConfirmed('TreasuryUpdated', { treasury }, event); } catch (err) { console.error(err); }
+  });
+
+  targetContract.on('ReputationLedgerUpdated', (reputationLedger, event) => {
+    try { processEventIfConfirmed('ReputationLedgerUpdated', { reputationLedger }, event); } catch (err) { console.error(err); }
+  });
+}
 
 function serializeEventData(obj) {
   try { return JSON.stringify(obj); } catch (e) { return null; }
@@ -143,7 +292,7 @@ function extractEventMeta(event) {
 async function replayEventsInRange(fromBlock, toBlock) {
   if (!contract || fromBlock > toBlock) return;
 
-  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TransferInitiated', 'TransferConfirmed', 'TransferCompleted', 'TransferRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
   for (const eventName of eventNames) {
     const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
     for (const log of logs) {
@@ -193,6 +342,12 @@ function normalizeIOUSnapshot(result) {
     repPreAwardedAmount: result.repPreAwardedAmount !== undefined ? result.repPreAwardedAmount : result[13],
     transferable: result.transferable !== undefined ? result.transferable : result[14],
     unhappyClose: result.unhappyClose !== undefined ? result.unhappyClose : result[15],
+    transferRequested: result.transferRequested !== undefined ? result.transferRequested : result[16],
+    transferTo: result.transferTo || result[17] || null,
+    transferNewOwnerConfirmed: result.transferNewOwnerConfirmed !== undefined ? result.transferNewOwnerConfirmed : result[18],
+    transferFulfillerConfirmed: result.transferFulfillerConfirmed !== undefined ? result.transferFulfillerConfirmed : result[19],
+    transferRequestedAt: result.transferRequestedAt !== undefined ? result.transferRequestedAt : result[20],
+    transferFeePaid: result.transferFeePaid !== undefined ? result.transferFeePaid : result[21],
   };
 }
 
@@ -214,6 +369,12 @@ function updateTokenSnapshot(tokenId, snapshot, eventContext) {
     rep_pre_awarded_amount: snapshot.repPreAwardedAmount ?? null,
     transferable: snapshot.transferable ? 1 : 0,
     unhappy_close: snapshot.unhappyClose ? 1 : 0,
+    transfer_requested: snapshot.transferRequested ? 1 : 0,
+    transfer_to: snapshot.transferTo ? snapshot.transferTo.toLowerCase() : null,
+    transfer_new_owner_confirmed: snapshot.transferNewOwnerConfirmed ? 1 : 0,
+    transfer_fulfiller_confirmed: snapshot.transferFulfillerConfirmed ? 1 : 0,
+    transfer_requested_at: snapshot.transferRequestedAt ?? null,
+    transfer_fee_paid: snapshot.transferFeePaid ?? null,
     updated_at: eventContext.timestamp || Math.floor(Date.now() / 1000),
     last_block: eventContext.blockNumber,
     last_tx_hash: eventContext.txHash,
@@ -243,6 +404,12 @@ function applyEventToTokens(eventName, data) {
       rep_pre_awarded_amount: data.repPreAwardedAmount ?? null,
       transferable: data.transferable ? 1 : 0,
       unhappy_close: data.unhappyClose ? 1 : 0,
+      transfer_requested: data.transferRequested ? 1 : 0,
+      transfer_to: data.transferTo ? data.transferTo.toLowerCase() : null,
+      transfer_new_owner_confirmed: data.transferNewOwnerConfirmed ? 1 : 0,
+      transfer_fulfiller_confirmed: data.transferFulfillerConfirmed ? 1 : 0,
+      transfer_requested_at: data.transferRequestedAt ?? null,
+      transfer_fee_paid: data.transferFeePaid ?? null,
       is_burned: 0,
       created_at: data.timestamp || now,
       updated_at: data.timestamp || now,
@@ -253,6 +420,38 @@ function applyEventToTokens(eventName, data) {
   } else if (eventName === 'IOUAccepted' || eventName === 'IOUSettled' || eventName === 'IOURefunded' || eventName === 'CloseRequested' || eventName === 'CloseConfirmed' || eventName === 'CloseRejected') {
     const stateMap = { IOUAccepted: 1, IOUSettled: 2, IOURefunded: 3, CloseRequested: 1, CloseConfirmed: 2, CloseRejected: 1 };
     updateStateStmt.run({ token_id, state: stateMap[eventName] ?? null, updated_at: data.timestamp || now, last_block: data.blockNumber, last_tx_hash: data.txHash, last_log_index: data.logIndex });
+  } else if (eventName === 'TransferInitiated') {
+    setTransferInitiatedStmt.run({
+      token_id,
+      transfer_to: data.to ? data.to.toLowerCase() : null,
+      transfer_requested_at: data.timestamp || now,
+      updated_at: data.timestamp || now,
+      last_block: data.blockNumber,
+      last_tx_hash: data.txHash,
+      last_log_index: data.logIndex,
+    });
+  } else if (eventName === 'TransferConfirmed') {
+    const existing = selectTokenByIdStmt.get({ token_id });
+    const transferTo = existing?.transfer_to ? String(existing.transfer_to).toLowerCase() : null;
+    const confirmer = data.by ? String(data.by).toLowerCase() : null;
+    setTransferConfirmedStmt.run({
+      token_id,
+      transfer_new_owner_confirmed: confirmer && transferTo && confirmer === transferTo ? 1 : null,
+      transfer_fulfiller_confirmed: confirmer && transferTo && confirmer === transferTo ? null : 1,
+      transfer_fee_paid: null,
+      updated_at: data.timestamp || now,
+      last_block: data.blockNumber,
+      last_tx_hash: data.txHash,
+      last_log_index: data.logIndex,
+    });
+  } else if (eventName === 'TransferCompleted' || eventName === 'TransferRejected') {
+    clearTransferStmt.run({
+      token_id,
+      updated_at: data.timestamp || now,
+      last_block: data.blockNumber,
+      last_tx_hash: data.txHash,
+      last_log_index: data.logIndex,
+    });
   } else if (eventName === 'Transfer') {
     const to = data.to;
     const is_burned = (to === ethers.ZeroAddress) ? 1 : 0;
@@ -280,6 +479,9 @@ function rebuildTokensFromProcessedEvents() {
 
 async function reconcileOnStartup() {
   try {
+    if (!contract) {
+      await initContract();
+    }
     await syncFromChain('startup');
   } catch (err) {
     console.error('reconcileOnStartup error', err);
@@ -350,6 +552,17 @@ async function processEventIfConfirmed(eventName, args, event) {
       payload.fulfiller = args.fulfiller || args[1] || null;
     } else if (eventName === 'CloseConfirmed' || eventName === 'CloseRejected') {
       payload.owner = args.owner || args[1] || null;
+    } else if (eventName === 'TransferInitiated') {
+      payload.from = args.from || args[1] || null;
+      payload.to = args.to || args[2] || null;
+    } else if (eventName === 'TransferConfirmed') {
+      payload.by = args.by || args[1] || null;
+    } else if (eventName === 'TransferCompleted') {
+      payload.from = args.from || args[1] || null;
+      payload.to = args.to || args[2] || null;
+      payload.fee = args.fee ?? args[3] ?? null;
+    } else if (eventName === 'TransferRejected') {
+      payload.by = args.by || args[1] || null;
     } else if (eventName === 'TreasuryUpdated') {
       payload.treasury = args.treasury || args[0] || null;
     } else if (eventName === 'ReputationLedgerUpdated') {
@@ -366,7 +579,7 @@ async function processEventIfConfirmed(eventName, args, event) {
 
     applyEventToTokens(eventName, payload);
 
-    if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected'].includes(eventName)) {
+    if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TransferInitiated', 'TransferConfirmed', 'TransferCompleted', 'TransferRejected'].includes(eventName)) {
       try {
         const fetched = await fetchIOUWithRetry(tokenId);
         if (fetched) {
@@ -388,7 +601,7 @@ async function processEventIfConfirmed(eventName, args, event) {
 async function replayEventsInRange(fromBlock, toBlock) {
   if (!contract || fromBlock > toBlock) return;
 
-  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
+  const eventNames = ['Transfer', 'IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TransferInitiated', 'TransferConfirmed', 'TransferCompleted', 'TransferRejected', 'TreasuryUpdated', 'ReputationLedgerUpdated'];
   for (const eventName of eventNames) {
     const logs = await contract.queryFilter(eventName, fromBlock, toBlock);
     for (const log of logs) {
@@ -409,6 +622,14 @@ async function replayEventsInRange(fromBlock, toBlock) {
           await processEventIfConfirmed('CloseConfirmed', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
         } else if (eventName === 'CloseRejected') {
           await processEventIfConfirmed('CloseRejected', { tokenId: log.args?.tokenId, owner: log.args?.owner }, log);
+        } else if (eventName === 'TransferInitiated') {
+          await processEventIfConfirmed('TransferInitiated', { tokenId: log.args?.tokenId, from: log.args?.from, to: log.args?.to }, log);
+        } else if (eventName === 'TransferConfirmed') {
+          await processEventIfConfirmed('TransferConfirmed', { tokenId: log.args?.tokenId, by: log.args?.by }, log);
+        } else if (eventName === 'TransferCompleted') {
+          await processEventIfConfirmed('TransferCompleted', { tokenId: log.args?.tokenId, from: log.args?.from, to: log.args?.to, fee: log.args?.fee }, log);
+        } else if (eventName === 'TransferRejected') {
+          await processEventIfConfirmed('TransferRejected', { tokenId: log.args?.tokenId, by: log.args?.by }, log);
         } else if (eventName === 'TreasuryUpdated') {
           await processEventIfConfirmed('TreasuryUpdated', { treasury: log.args?.treasury }, log);
         } else if (eventName === 'ReputationLedgerUpdated') {
@@ -440,61 +661,22 @@ async function fetchIOUWithRetry(tokenId) {
   return null;
 }
 
-if (contract) {
-  // wire events
-  contract.on('Transfer', (from, to, tokenId, event) => {
-    try { processEventIfConfirmed('Transfer', { from, to, tokenId }, event); } catch (err) { console.error(err); }
-  });
+async function bootstrap() {
+  try {
+    await initContract();
+    if (contract) {
+      wireContractListeners(contract);
+    } else {
+      console.warn('No IOUNFT address resolved yet; indexer will stay passive until addresses.json is in sync.');
+    }
 
-  contract.on('IOUCreated', (tokenId, creator, fulfiller, collateral, event) => {
-    try { processEventIfConfirmed('IOUCreated', { tokenId, creator, fulfiller, collateral }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('IOUAccepted', (tokenId, fulfiller, event) => {
-    try { processEventIfConfirmed('IOUAccepted', { tokenId, fulfiller }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('IOUSettled', (tokenId, fee, payout, event) => {
-    try { processEventIfConfirmed('IOUSettled', { tokenId, fee, payout }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('IOURefunded', (tokenId, amount, event) => {
-    try { processEventIfConfirmed('IOURefunded', { tokenId, amount }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('CloseRequested', (tokenId, fulfiller, event) => {
-    try { processEventIfConfirmed('CloseRequested', { tokenId, fulfiller }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('CloseConfirmed', (tokenId, owner, event) => {
-    try { processEventIfConfirmed('CloseConfirmed', { tokenId, owner }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('CloseRejected', (tokenId, owner, event) => {
-    try { processEventIfConfirmed('CloseRejected', { tokenId, owner }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('TreasuryUpdated', (treasury, event) => {
-    try { processEventIfConfirmed('TreasuryUpdated', { treasury }, event); } catch (err) { console.error(err); }
-  });
-
-  contract.on('ReputationLedgerUpdated', (reputationLedger, event) => {
-    try { processEventIfConfirmed('ReputationLedgerUpdated', { reputationLedger }, event); } catch (err) { console.error(err); }
-  });
-
-  // perform reconciliation on startup
-  reconcileOnStartup();
-  syncTimer = setInterval(() => {
-    syncFromChain('poll').catch((err) => console.error('syncFromChain poll error', err));
-  }, 5000);
-
-} else {
-  console.warn('No IOUNFT address provided; indexer started in passive mode. Set IOUNFT_ADDRESS in .env to enable contract listeners.');
+    await reconcileOnStartup();
+    syncTimer = setInterval(() => {
+      syncFromChain('poll').catch((err) => console.error('syncFromChain poll error', err));
+    }, 5000);
+  } catch (err) {
+    console.error('Indexer bootstrap failed', err);
+  }
 }
 
-process.on('SIGINT', () => {
-  console.log('Shutting down indexer...');
-  if (syncTimer) clearInterval(syncTimer);
-  db.close();
-  process.exit(0);
-});
+bootstrap();

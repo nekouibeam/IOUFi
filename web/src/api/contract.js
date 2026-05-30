@@ -101,6 +101,37 @@ export async function mintIOU({ fulfiller, deadlineTs, transferable = false, val
   return c.mintIOU(fulfiller, BigInt(deadlineTs), transferable, description, serviceType, { value });
 }
 
+export async function modifyPending(tokenId, newDeadline, newDescription, newServiceType) {
+  const c = await getContract('IOUNFT');
+  return c.modifyPending(BigInt(tokenId), BigInt(newDeadline), newDescription, newServiceType);
+}
+
+export async function startTransfer(tokenId, to) {
+  const c = await getContract('IOUNFT');
+  return c.startTransfer(BigInt(tokenId), to);
+}
+
+export async function confirmTransferByNewOwner(tokenId) {
+  const c = await getContract('IOUNFT');
+  const fee = await c.transferFeeWei();
+  return c.confirmTransferByNewOwner(BigInt(tokenId), { value: fee });
+}
+
+export async function confirmTransferByFulfiller(tokenId) {
+  const c = await getContract('IOUNFT');
+  return c.confirmTransferByFulfiller(BigInt(tokenId));
+}
+
+export async function rejectTransfer(tokenId) {
+  const c = await getContract('IOUNFT');
+  return c.rejectTransfer(BigInt(tokenId));
+}
+
+export async function getTransferFeeWei() {
+  const c = await getReadContract('IOUNFT');
+  return c.transferFeeWei();
+}
+
 export async function acceptIOU(tokenId) {
   const c = await getContract('IOUNFT');
   return c.acceptIOU(BigInt(tokenId));

@@ -27,7 +27,7 @@ function prepare(sql) {
 }
 
 const selectMissing = prepare(`SELECT token_id FROM tokens WHERE description IS NULL OR service_type IS NULL OR collateral IS NULL OR deadline IS NULL OR decayed_creator_rep_base IS NULL OR decayed_fulfiller_rep_base IS NULL ORDER BY token_id LIMIT @limit`);
-const updateStmt = prepare(`UPDATE tokens SET collateral=@collateral, deadline=@deadline, description=@description, service_type=@service_type, decayed_creator_rep_base=@decayed_creator_rep_base, decayed_fulfiller_rep_base=@decayed_fulfiller_rep_base, close_requested=@close_requested, close_requested_at=@close_requested_at, rep_pre_awarded=@rep_pre_awarded, rep_pre_awarded_amount=@rep_pre_awarded_amount, transferable=@transferable, unhappy_close=@unhappy_close, updated_at=@updated_at WHERE token_id=@token_id`);
+const updateStmt = prepare(`UPDATE tokens SET collateral=@collateral, deadline=@deadline, description=@description, service_type=@service_type, decayed_creator_rep_base=@decayed_creator_rep_base, decayed_fulfiller_rep_base=@decayed_fulfiller_rep_base, close_requested=@close_requested, close_requested_at=@close_requested_at, rep_pre_awarded=@rep_pre_awarded, rep_pre_awarded_amount=@rep_pre_awarded_amount, transferable=@transferable, unhappy_close=@unhappy_close, transfer_requested=@transfer_requested, transfer_to=@transfer_to, transfer_new_owner_confirmed=@transfer_new_owner_confirmed, transfer_fulfiller_confirmed=@transfer_fulfiller_confirmed, transfer_requested_at=@transfer_requested_at, transfer_fee_paid=@transfer_fee_paid, updated_at=@updated_at WHERE token_id=@token_id`);
 
 async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
   const baseDelay = 500;
@@ -46,7 +46,13 @@ async function fetchIOUWithRetry(tokenId, maxRetries = 3) {
         repPreAwarded: r.repPreAwarded !== undefined ? r.repPreAwarded : r[12] ? 1 : 0,
         repPreAwardedAmount: r.repPreAwardedAmount !== undefined ? r.repPreAwardedAmount : r[13],
         transferable: r.transferable !== undefined ? r.transferable : r[14] ? 1 : 0,
-        unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[15] ? 1 : 0
+        unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[15] ? 1 : 0,
+        transferRequested: r.transferRequested !== undefined ? r.transferRequested : r[16] ? 1 : 0,
+        transferTo: r.transferTo || r[17] || null,
+        transferNewOwnerConfirmed: r.transferNewOwnerConfirmed !== undefined ? r.transferNewOwnerConfirmed : r[18] ? 1 : 0,
+        transferFulfillerConfirmed: r.transferFulfillerConfirmed !== undefined ? r.transferFulfillerConfirmed : r[19] ? 1 : 0,
+        transferRequestedAt: r.transferRequestedAt !== undefined ? r.transferRequestedAt : r[20],
+        transferFeePaid: r.transferFeePaid !== undefined ? r.transferFeePaid : r[21]
       };
     } catch (err) {
       const wait = baseDelay * Math.pow(2, attempt);
@@ -83,6 +89,12 @@ async function runBatch(limit = 100) {
           rep_pre_awarded_amount: fetched.repPreAwardedAmount,
           transferable: fetched.transferable,
           unhappy_close: fetched.unhappyClose,
+          transfer_requested: fetched.transferRequested,
+          transfer_to: fetched.transferTo ? fetched.transferTo.toLowerCase() : null,
+          transfer_new_owner_confirmed: fetched.transferNewOwnerConfirmed,
+          transfer_fulfiller_confirmed: fetched.transferFulfillerConfirmed,
+          transfer_requested_at: fetched.transferRequestedAt,
+          transfer_fee_paid: fetched.transferFeePaid,
           updated_at: Math.floor(Date.now() / 1000)
         });
         console.log('Backfilled', tokenId);

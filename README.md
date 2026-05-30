@@ -28,7 +28,7 @@ $env:PRIVATE_KEY = '0x<private_key_here>'
 $env:RPC_URL = 'http://127.0.0.1:8545'
 
 # On Unix
-export PRIVATE_KEY=0x<private_key_here> #export PRIVATE_KEY=0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6
+export PRIVATE_KEY=0x<private_key_here> #export PRIVATE_KEY=0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6 &&
 export RPC_URL=http://127.0.0.1:8545
 ```
 

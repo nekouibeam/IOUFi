@@ -24,9 +24,20 @@ struct IOUData {
     uint256 deadline;
     string description;
     string serviceType;
-    uint256 lifetimeRepReward;
+  uint256 decayedCreatorRepBase;
+  uint256 decayedFulfillerRepBase;
+  bool closeRequested;
+  uint256 closeRequestedAt;
+  bool repPreAwarded;
+  uint256 repPreAwardedAmount;
     bool transferable;
     bool unhappyClose;
+  bool transferRequested;
+  address transferTo;
+  bool transferNewOwnerConfirmed;
+  bool transferFulfillerConfirmed;
+  uint256 transferRequestedAt;
+  uint256 transferFeePaid;
 }
 ```
 #### 觀念解析
@@ -34,10 +45,16 @@ struct IOUData {
 
 這代表：
 
-- creator = 發放人，會保留在 IOUData.creator
-- owner = ERC721 持有人，現在是發放人
-- fulfiller = 債務人，只是 IOU 裡記錄的對象，不等於 NFT 當前持有人
-所以你不需要在 IOUData 再加 owner 欄位；owner 已經由 ERC721 本身提供。若之後要更換持有人，直接走 ERC721 transfer 即可，creator 不會被覆蓋。
+ - creator = 發放人，會保留在 `IOUData.creator`
+ - owner = ERC721 持有人，現在是發放人
+ - fulfiller = 債務人，只是 IOU 裡記錄的對象，不等於 NFT 當前持有人
+
+Current transfer policy:
+
+ - `Pending` IOUs are not transferable.
+ - `Active` social IOUs (`collateral == 0`) are transferable only through the three-party confirmation flow.
+ - `Active` bounty IOUs (`collateral > 0`) are locked and cannot be transferred.
+ - `Settled` and `Cancelled` IOUs are not transferable.
 
 ### `IOUNFT.State`
 
@@ -91,20 +108,16 @@ Address source: `web/src/contracts/addresses.json` under the current chain id
 
 ### Write APIs
 
-#### `mintIOU(address fulfiller, uint256 deadline, bool transferable, uint256 lifetimeRepReward, string description, string serviceType) payable returns (uint256 tokenId)`
+#### `mintIOU(address fulfiller, uint256 deadline, bool transferable, string description, string serviceType) payable returns (uint256 tokenId)`
 
 - Purpose: create a new IOU NFT.
 - Caller: creator / issuer.
 - Inputs:
   - `fulfiller`: wallet address of the person who owes the IOU.
   - `deadline`: unix timestamp in seconds.
-  - `transferable`: controls transferability while the IOU is `Pending` (set at mint time).
-    - When `Pending`: `transferable == true` allows transfers; otherwise transfers are blocked.
-    - When `Active`: Social IOUs (`collateral == 0`) are transferable; Bounty IOUs (`collateral > 0`) are locked.
-    - When `Settled` or `Cancelled`: transfers are disallowed.
-  - `lifetimeRepReward`: total reputation reward to split on settlement.
+  - `transferable`: retained in storage for compatibility, but `Pending` transfers are blocked in the current policy.
   - `description`: required human-readable IOU description.
-  - `serviceType`: optional service category for the eventual repayment.
+  - `serviceType`: service category tag for the eventual repayment.
 - ETH value:
   - `msg.value` becomes the IOU collateral.
   - Optional; can be `0` for social IOUs.
@@ -115,6 +128,27 @@ Address source: `web/src/contracts/addresses.json` under the current chain id
   - `IOUCreated(tokenId, creator, fulfiller, collateral)`
 - Reverts when:
   - `deadline <= block.timestamp`
+
+#### `modifyPending(uint256 tokenId, uint256 newDeadline, string newDescription, string newServiceType)`
+
+- Purpose: edit a pending IOU draft before it becomes active.
+- Caller: creator only.
+- Inputs:
+  - `tokenId`: target IOU NFT.
+  - `newDeadline`: updated deadline.
+  - `newDescription`: updated service description.
+  - `newServiceType`: updated service type tag.
+- Output:
+  - Transaction response.
+- Emits:
+  - `IOUCreated(tokenId, creator, fulfiller, collateral)` as the current draft-refresh signal.
+- Reverts when:
+  - token does not exist
+  - token is not `Pending`
+  - caller is not creator
+  - `newDeadline <= block.timestamp`
+  - `newDescription` is empty
+  - `newServiceType` is empty
 
 #### `acceptIOU(uint256 tokenId)`
 
@@ -210,6 +244,68 @@ Address source: `web/src/contracts/addresses.json` under the current chain id
   - caller is not creator
   - ETH transfer fails
 
+#### `startTransfer(uint256 tokenId, address to)`
+
+- Purpose: start the three-party transfer flow for an `Active` social IOU.
+- Caller: current owner only.
+- Inputs:
+  - `tokenId`: target IOU NFT.
+  - `to`: proposed new owner address.
+- Output:
+  - Transaction response.
+- Emits:
+  - `TransferInitiated(tokenId, from, to)`
+- Reverts when:
+  - token does not exist
+  - caller is not current owner
+  - token is not `Active`
+  - token collateral is not zero
+  - a transfer is already pending
+  - `to` is zero address
+
+#### `confirmTransferByNewOwner(uint256 tokenId)` payable
+
+- Purpose: let the proposed new owner accept the transfer and pay the fixed fee.
+- Caller: `transferTo` only.
+- ETH value:
+  - Must be exactly `0.0015 ETH` (`1_500_000_000_000_000 wei`).
+- Output:
+  - Transaction response.
+- Emits:
+  - `TransferConfirmed(tokenId, by)`
+  - `TransferCompleted(tokenId, from, to, fee)` once the fulfiller has also confirmed
+- Reverts when:
+  - no transfer is pending
+  - caller is not the proposed new owner
+  - attached ETH is not exactly the fixed fee
+
+#### `confirmTransferByFulfiller(uint256 tokenId)`
+
+- Purpose: let the fulfiller approve the transfer.
+- Caller: fulfiller only.
+- Output:
+  - Transaction response.
+- Emits:
+  - `TransferConfirmed(tokenId, by)`
+  - `TransferCompleted(tokenId, from, to, fee)` once the new owner has also confirmed
+- Reverts when:
+  - no transfer is pending
+  - caller is not fulfiller
+
+#### `rejectTransfer(uint256 tokenId)`
+
+- Purpose: cancel a pending transfer request.
+- Caller: current owner, proposed new owner, or fulfiller.
+- Side effects:
+  - clears the transfer request
+  - refunds the fixed fee to the new owner if it had already been paid
+- Emits:
+  - `TransferRejected(tokenId, by)`
+- Reverts when:
+  - no transfer is pending
+  - caller is not authorized
+  - ETH transfer fails
+
 ### Read APIs
 
 #### `getIOU(uint256 tokenId) external view returns (IOUData memory)`
@@ -233,6 +329,11 @@ Because the contract uses `public` state variables / mappings, Solidity generate
 #### `marketplaceFeeBps() external view returns (uint256)`
 
 - Fee basis points used by bounty settlement.
+
+#### `transferFeeWei() external view returns (uint256)`
+
+- Fixed transfer fee charged to the new owner during the Active social IOU transfer flow.
+- Value: `1_500_000_000_000_000 wei` (`0.0015 ETH`).
 
 #### `treasury() external view returns (address)`
 
@@ -272,6 +373,10 @@ Because the contract uses `public` state variables / mappings, Solidity generate
 - `IOUAccepted(uint256 tokenId, address fulfiller)`
 - `IOUSettled(uint256 tokenId, uint256 fee, uint256 payout)`
 - `IOURefunded(uint256 tokenId, uint256 amount)`
+- `TransferInitiated(uint256 tokenId, address from, address to)`
+- `TransferConfirmed(uint256 tokenId, address by)`
+- `TransferCompleted(uint256 tokenId, address from, address to, uint256 fee)`
+- `TransferRejected(uint256 tokenId, address by)`
 - `ReputationAwarded(uint256 tokenId, address account, uint256 amount)`
 - `TreasuryUpdated(address treasury)`
 - `ReputationLedgerUpdated(address reputationLedger)`
@@ -578,11 +683,32 @@ These are the current functions exported by the frontend wrapper.
 
 ### Write wrappers
 
-#### `mintIOU({ fulfiller, deadlineTs, transferable = false, lifetimeRepReward = 0, valueEth = '0' })`
+#### `mintIOU({ fulfiller, deadlineTs, transferable = false, valueEth = '0', description, serviceType })`
 
 - Maps to `IOUNFT.mintIOU(...)`.
 - `valueEth` is converted to wei with `ethers.parseEther` when non-zero.
-- The frontend wrapper passes the extended IOU fields from the create form: `description` and `serviceType`.
+- The frontend wrapper passes the human-readable IOU fields from the create form: `description` and `serviceType`.
+
+#### `modifyPending(tokenId, newDeadline, newDescription, newServiceType)`
+
+- Maps to `IOUNFT.modifyPending(tokenId, newDeadline, newDescription, newServiceType)`.
+
+#### `startTransfer(tokenId, to)`
+
+- Maps to `IOUNFT.startTransfer(tokenId, to)`.
+
+#### `confirmTransferByNewOwner(tokenId)`
+
+- Maps to `IOUNFT.confirmTransferByNewOwner(tokenId)`.
+- Must be called with exactly `transferFeeWei` in `msg.value`.
+
+#### `confirmTransferByFulfiller(tokenId)`
+
+- Maps to `IOUNFT.confirmTransferByFulfiller(tokenId)`.
+
+#### `rejectTransfer(tokenId)`
+
+- Maps to `IOUNFT.rejectTransfer(tokenId)`.
 
 #### `acceptIOU(tokenId)`
 
@@ -614,6 +740,11 @@ These are the current functions exported by the frontend wrapper.
   - settle bounty IOU: `settleBountyIOU`
   - refund pending: `refundPending`
   - timeout claim: `timeoutClaim`
+  - modify pending draft: `modifyPending`
+  - start transfer: `startTransfer`
+  - confirm transfer by new owner: `confirmTransferByNewOwner`
+  - confirm transfer by fulfiller: `confirmTransferByFulfiller`
+  - reject transfer: `rejectTransfer`
 - For read-heavy pages, the next useful addition would be provider-based helpers such as:
   - `getIOU(tokenId)`
   - `getReputation(address)`

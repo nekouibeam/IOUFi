@@ -40,6 +40,7 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
   }[String(token.state)] ?? String(token.state ?? '—');
   const typeLabel = Number(token.collateral ?? 0) > 0 ? 'Bounty' : 'Social';
   const closeStatus = token.closeRequested ? 'Close requested' : 'Close open';
+  const transferStatus = token.transferRequested ? `Transferring → ${token.transferTo || '—'}` : 'Transfer open';
   const canRequestClose = token.sectionKey === 'owedByMe' && !token.closeRequested && !token.syncing;
   const canRespondClose = token.sectionKey === 'owedToMe' && token.closeRequested && !token.syncing;
 
@@ -66,6 +67,7 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
         <span className="chip chip-type">{typeLabel}</span>
         <span className="chip">{token.serviceType || 'No service type'}</span>
         <span className={`chip ${token.closeRequested ? 'chip-warn' : 'chip-ok'}`}>{closeStatus}</span>
+        <span className={`chip ${token.transferRequested ? 'chip-warn' : 'chip-ok'}`}>{transferStatus}</span>
         <span className={`chip ${token.syncing ? 'chip-warn' : 'chip-ok'}`}>{token.syncing ? 'Syncing' : 'Synced'}</span>
       </div>
 

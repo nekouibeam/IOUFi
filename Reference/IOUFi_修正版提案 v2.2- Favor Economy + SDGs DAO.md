@@ -142,7 +142,7 @@ Woody 實際償還後，Andy 進行結算並給予 a/b/c 評價：
 
 IOU NFT 的轉讓規則依其型態而定：
 
-1. **Social IOU**：需三方確認（原債權人同意轉讓、新債權人願意接受、債務人確認願意更改幫助對象）。轉讓時可收取小額 transfer fee 進 Treasury。
+1. **Social IOU**：需三方確認（原債權人-現任owner 同意轉讓、新債權人-新owner 願意接受、債務人-fulfiller 確認願意更改幫助對象）。轉讓時收取小額 transfer fee (假設 0.0015 eth) 進 Treasury。
 2. **Bounty IOU**：在 Pending 狀態（無人接單）下可修改或撤銷；進入 Active 狀態（已有人接單執行中）時，**鎖定不可轉讓**，以保障執行者與發案方的資金與權益。
 
 ---

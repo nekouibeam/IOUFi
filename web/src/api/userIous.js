@@ -48,6 +48,12 @@ export async function enrichWithOnChainData(provider, iouAbi, contractAddress, t
       repPreAwardedAmount: r.repPreAwardedAmount !== undefined ? r.repPreAwardedAmount : r[13],
       transferable: r.transferable !== undefined ? r.transferable : r[14],
       unhappyClose: r.unhappyClose !== undefined ? r.unhappyClose : r[15],
+      transferRequested: r.transferRequested !== undefined ? r.transferRequested : r[16],
+      transferTo: r.transferTo || r[17] || null,
+      transferNewOwnerConfirmed: r.transferNewOwnerConfirmed !== undefined ? r.transferNewOwnerConfirmed : r[18],
+      transferFulfillerConfirmed: r.transferFulfillerConfirmed !== undefined ? r.transferFulfillerConfirmed : r[19],
+      transferRequestedAt: r.transferRequestedAt !== undefined ? r.transferRequestedAt : r[20],
+      transferFeePaid: r.transferFeePaid !== undefined ? r.transferFeePaid : r[21],
     };
 
     try {
