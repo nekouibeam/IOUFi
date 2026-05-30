@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import * as api from '../api/contract';
 import IOUNFTArtifact from '../contracts/IOUNFT.json';
@@ -17,6 +17,52 @@ function defaultDeadlineDate() {
 }
 
 export default function CreateIOU() {
+  const [account, setAccount] = useState('');
+  const [connecting, setConnecting] = useState(false);
+
+  async function refreshAccount() {
+    if (!window.ethereum) return '';
+    try {
+      const provider = await api.getProvider();
+      const accounts = await provider.send('eth_accounts', []);
+      if (!accounts?.length) {
+        setAccount('');
+        return '';
+      }
+      const signer = await provider.getSigner();
+      const addr = await signer.getAddress();
+      setAccount(addr);
+      return addr;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function connectWallet() {
+    setConnecting(true);
+    try {
+      const provider = await api.connectWallet();
+      const signer = await provider.getSigner();
+      const addr = await signer.getAddress();
+      setAccount(addr);
+      return addr;
+    } catch (err) {
+      throw err;
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const addr = await refreshAccount();
+        if (!cancelled && addr) setAccount(addr);
+      } catch (_) {}
+    })();
+    return () => { cancelled = true };
+  }, []);
   const [tab, setTab] = useState('social');
   const [form, setForm] = useState({
     fulfiller: '',
@@ -125,8 +171,19 @@ export default function CreateIOU() {
 
   return (
     <div>
-      <div className="page-title">發放人情債 NFT</div>
-      <div className="page-sub">Social / Bounty 分頁與合約參數語意對齊（`transferable` 固定 false）。</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div className="page-title">發放人情債 NFT</div>
+          <div className="page-sub">Social / Bounty 分頁與合約參數語意對齊（`transferable` 固定 false）。</div>
+        </div>
+
+        <div style={{ minWidth: 220, display: 'grid', gap: 8, justifyItems: 'end' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn primary" onClick={connectWallet} disabled={connecting}>{connecting ? '連線中…' : (account ? 'Reconnect wallet' : 'Connect wallet')}</button>
+          </div>
+          <div className="mono small" style={{ color: 'var(--muted)' }}>currentAccount: {account || 'not connected'}</div>
+        </div>
+      </div>
 
       <div className="tabs" role="tablist" aria-label="Create IOU Type">
         <button type="button" className={`tab ${tab === 'social' ? 'active' : ''}`} onClick={() => setTab('social')}>Social IOU</button>
