@@ -1,5 +1,4 @@
-import React, { useMemo, useState } from 'react';
-import { ethers } from 'ethers';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getUserIOUs, enrichWithOnChainData } from '../api/userIous';
 import * as api from '../api/contract';
 import { getReadProvider } from '../api/contract';
@@ -186,7 +185,8 @@ function SectionBlock({ section, items, loading, onRequestClose, onConfirmClose,
 }
 
 export default function UserIous() {
-  const [address, setAddress] = useState('');
+  const [account, setAccount] = useState('');
+  const [busy, setBusy] = useState(false);
   const [submittedAddress, setSubmittedAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
@@ -196,6 +196,41 @@ export default function UserIous() {
   const [queryTime, setQueryTime] = useState('');
 
   const sections = useMemo(() => buildSections(results, enriched, submittedAddress), [results, enriched, submittedAddress]);
+
+  async function refreshAccount() {
+    if (!window.ethereum) {
+      setError('未偵測到錢包，請安裝並啟用 MetaMask。');
+      return '';
+    }
+
+    const provider = await api.getProvider();
+    const accounts = await provider.send('eth_accounts', []);
+    if (!accounts?.length) {
+      setAccount('');
+      return '';
+    }
+
+    const signer = await provider.getSigner();
+    const addr = await signer.getAddress();
+    setAccount(addr);
+    return addr;
+  }
+
+  async function connectWalletAndQuery() {
+    setError(null);
+    setBusy(true);
+    try {
+      const provider = await api.connectWallet();
+      const signer = await provider.getSigner();
+      const addr = await signer.getAddress();
+      setAccount(addr);
+      await loadAddress(normalizeAddress(addr));
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function loadAddress(normalizedAddress, { retainVisibleData = false } = {}) {
     setError(null);
@@ -234,16 +269,15 @@ export default function UserIous() {
     }
   }
 
-  async function handleQuery(event) {
-    event.preventDefault();
-    const normalized = normalizeAddress(address);
+  async function handleRefreshByWallet() {
     setError(null);
+    const addr = await refreshAccount();
+    const normalized = normalizeAddress(addr);
     if (!/^0x[0-9a-f]{40}$/.test(normalized)) {
-      setError('請輸入有效的 0x 地址。');
+      setError('請先連接錢包，再查詢 IOU。');
       return;
     }
-
-    await loadAddress(normalized);
+    await loadAddress(normalized, { retainVisibleData: true });
   }
 
   async function refreshSubmittedAddress() {
@@ -275,6 +309,27 @@ export default function UserIous() {
     return runCloseAction('退回申請', () => api.rejectClose(tokenId));
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        const addr = await refreshAccount();
+        if (!cancelled && addr) {
+          await loadAddress(normalizeAddress(addr));
+        }
+      } catch (_) {
+        // no-op, keep page usable for manual connect flow
+      }
+    }
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const hasResults = results.length > 0;
 
   return (
@@ -294,24 +349,22 @@ export default function UserIous() {
           </div>
         </div>
 
-        <form className="query-card" onSubmit={handleQuery}>
-          <label className="label" htmlFor="user-ious-address">User address</label>
+        <div className="query-card">
+          <label className="label">Wallet query</label>
           <div className="query-row">
-            <input
-              id="user-ious-address"
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              placeholder="0x..."
-              autoComplete="off"
-              spellCheck="false"
-            />
-            <button type="submit" className="btn primary" disabled={loading || enrichmentLoading}>Search</button>
+            <button type="button" className="btn primary" onClick={connectWalletAndQuery} disabled={busy || loading || enrichmentLoading}>
+              {busy ? '連線中…' : 'Connect Wallet'}
+            </button>
+            <button type="button" className="btn" onClick={handleRefreshByWallet} disabled={busy || loading || enrichmentLoading || !account}>
+              Refresh IOU
+            </button>
           </div>
+          <div className="mono small" style={{ color: 'var(--muted)' }}>currentAccount: {account || 'not connected'}</div>
           <div className="helper-text">
-            Results are grouped as <strong>Created by me</strong>, <strong>Owed to me</strong>, <strong>Owed by me</strong>, and <strong>History</strong>. History is exclusive.
+            以目前連線錢包地址查詢，結果會分組為 <strong>Created by me</strong>、<strong>Owed to me</strong>、<strong>Owed by me</strong>、<strong>History</strong>。
           </div>
           {error ? <div className="alert warn" style={{ marginTop: 12 }}>{error}</div> : null}
-        </form>
+        </div>
       </section>
 
       <section className="panel user-ious-summary">

@@ -7,7 +7,7 @@ export default function Layout({ children }) {
     { to: '/', label: '總覽', icon: '⌂' },
     { to: '/create', label: '發放人情債', icon: '＋' },
     { to: '/accept', label: '待確認', icon: '✓' },
-    { to: '/ious', label: '地址查詢', icon: '⇄' },
+    { to: '/ious', label: 'IOU 查詢', icon: '⇄' },
     { to: '/market', label: 'Favor 市場', icon: '⊡' },
     { to: '/dao', label: 'DAO 投票', icon: '◈' },
     { to: '/treasury', label: 'Treasury', icon: '◎' },
