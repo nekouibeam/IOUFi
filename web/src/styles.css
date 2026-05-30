@@ -554,13 +554,17 @@
 
 .transfer-board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  /* Keep three fixed columns on wider screens, with sensible min widths to avoid overlap */
+  grid-template-columns: repeat(3, minmax(300px, 1fr));
+  gap: 20px;
+  align-items: start;
 }
 
 .transfer-column {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
+  min-height: 220px;
 }
 
 .transfer-list {
@@ -646,6 +650,27 @@
   .transfer-hero-side {
     justify-items: start;
   }
+}
+
+/* Ensure cards do not overflow their column and allow scrolling if content is large */
+.transfer-list {
+  display: grid;
+  gap: 14px;
+  max-height: calc(100vh - 300px);
+  overflow: auto;
+  padding-right: 6px; /* avoid content touching scrollbar */
+}
+
+/* Make transfer cards stretch to column width and prevent absolute/floating elements from overlapping */
+.transfer-card {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* On narrow screens keep a comfortable padding */
+@media (max-width: 1100px) {
+  .transfer-hero-side { min-width: 0; justify-items: start }
+  .transfer-hero p { max-width: 100% }
 }
 
 .chip-warn {
