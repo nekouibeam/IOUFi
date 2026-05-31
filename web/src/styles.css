@@ -398,6 +398,11 @@
 .user-ious-sections {
   display: grid;
   gap: 18px;
+
+/* Reputation page tweaks */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.leaderboard tr.highlight{background:var(--accent-bg);border-left:4px solid var(--accent)}
+.leaderboard td{vertical-align:middle}
 }
 
 .iou-section {

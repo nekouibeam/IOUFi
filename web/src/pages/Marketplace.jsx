@@ -89,7 +89,7 @@ export default function Marketplace() {
       setStatus(`Token #${tokenId} 交易已送出，等待確認...`);
       await tx.wait();
       // optimistic removal: remove token locally first to avoid indexer lag
-      setItems((prev) => prev.filter((r) => String(r.token_id) !== String(tokenId)));
+      setItems((prev) => prev.filter((r) => String(r.tokenId) !== String(tokenId)));
       setStatus(`Token #${tokenId} 已接受並轉為 Active。`);
       // then refresh listing in background
       loadMarketplace();
@@ -182,7 +182,7 @@ export default function Marketplace() {
 
         <div className="nft-grid" style={{ marginTop: 12 }}>
           {items.map((row) => {
-            const tokenId = String(row.token_id);
+            const tokenId = String(row.tokenId);
             const isBusy = busyTokenId === tokenId;
 
             return (
@@ -202,7 +202,7 @@ export default function Marketplace() {
                   <div><span className="label">Owner</span><div className="mono small">{row.owner || '—'}</div></div>
                   <div><span className="label">Deadline</span><div className="mono small">{formatDeadline(row.deadline)}</div></div>
                   <div><span className="label">Creator</span><div className="mono small">{row.creator || '—'}</div></div>
-                  <div><span className="label">Service type</span><div className="mono small">{row.service_type || '—'}</div></div>
+                  <div><span className="label">Service type</span><div className="mono small">{row.serviceType || '—'}</div></div>
                 </div>
 
                 <div className="nft-actions">

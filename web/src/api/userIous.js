@@ -1,4 +1,5 @@
 import { Contract } from 'ethers';
+import { mapIndexerIouRow } from './iouMapping';
 
 // Frontend helper stubs for user IOU queries
 export async function getUserIOUs(address, options = {}) {
@@ -10,7 +11,13 @@ export async function getUserIOUs(address, options = {}) {
 
   const res = await fetch(`/api/users/${address}/ious?${params.toString()}`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
+  const payload = await res.json();
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  return {
+    ...payload,
+    account: payload?.account || address,
+    data: rows.map(mapIndexerIouRow),
+  };
 }
 
 export async function getUserIOUSummary(address) {

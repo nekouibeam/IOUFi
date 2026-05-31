@@ -10,6 +10,7 @@ import DAO from './pages/DAO';
 import Treasury from './pages/Treasury';
 import UserIous from './pages/UserIous';
 import SocialIOUTransfer from './pages/SocialIOUTransfer';
+import RepositoryRep from './pages/RepositoryRep';
 import Layout from './components/Layout';
 import './styles.css';
 
@@ -334,6 +335,7 @@ export default function App() {
           <Route path="/detail" element={<IOUDetail />} />
           <Route path="/ious" element={<UserIous />} />
           <Route path="/transfer" element={<SocialIOUTransfer />} />
+          <Route path="/reputation" element={<RepositoryRep />} />
           <Route path="/dao" element={<DAO />} />
           <Route path="/treasury" element={<Treasury />} />
         </Routes>

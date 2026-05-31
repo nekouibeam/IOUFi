@@ -251,7 +251,7 @@ export default function UserIous() {
 
       if (!rows.length) return;
 
-      const tokenIds = rows.map((row) => row.token_id).filter((id) => id !== undefined && id !== null);
+      const tokenIds = rows.map((row) => row.tokenId).filter((id) => id !== undefined && id !== null);
       const readProvider = await getReadProvider();
       const network = await readProvider.getNetwork();
       const contractAddress = addressesByChain?.[String(network.chainId)]?.IOUNFT

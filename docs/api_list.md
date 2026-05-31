@@ -3,10 +3,21 @@
 This document lists the backend APIs that the frontend can use in the current IOUFi codebase.
 
 Important notes:
-- There is no separate HTTP backend. The frontend talks to Solidity contracts directly through `ethers`.
+- There is an indexer-backed HTTP query API in `services/api` (default `http://localhost:4000`), used by frontend list and reputation pages.
+- Frontend still talks to Solidity contracts directly for write transactions through `ethers`.
 - Write calls require a signer / connected wallet.
-- Read calls can be done with a provider, but the current `web/src/api/contract.js` helper is still signer-oriented for contract instances.
+- Read calls can come from either on-chain provider reads (`web/src/api/contract.js`) or indexer-backed HTTP routes (`/api/...`).
 - Contract ABIs and deployed addresses are synced into `web/src/contracts/` by `node scripts/deploy-and-sync.js`.
+
+## Indexer Query API (services/api)
+
+- `GET /api/reputation/summary`
+- `GET /api/reputation/leaderboard?limit=20&offset=0`
+- `GET /api/reputation/:address`
+- `GET /api/reputation/interactions?address=0x...&limit=20&offset=0`
+- `GET /api/reputation/interactions/summary?address=0x...&limit=50&offset=0`
+- `GET /api/users/:address/ious?roles=creator,owner,fulfiller&states=0,1&limit=20`
+- `GET /api/marketplace/ious?limit=100`
 
 ## Shared data formats
 

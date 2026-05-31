@@ -18,6 +18,7 @@ contract ReputationLedger is Ownable, IReputationLedger {
     mapping(bytes32 => InteractionRecord) public interactions;
 
     event ReputationChanged(address indexed account, int256 currentDelta, int256 lifetimeDelta, int256 lockedDelta);
+    event InteractionRecorded(address indexed addrA, address indexed addrB, uint8 decayLevel, uint256 lastInteractionTs);
     event IOUNFTUpdated(address indexed iouNft);
     event DAOUpdated(address indexed dao);
 
@@ -54,6 +55,16 @@ contract ReputationLedger is Ownable, IReputationLedger {
         target.lifetimeRep += adjusted;
 
         emit ReputationChanged(to, int256(adjusted), int256(adjusted), 0);
+    }
+
+    function awardRepFixed(address to, uint256 amount) external onlyIOUNFT {
+        require(to != address(0), "ReputationLedger: zero account");
+
+        ReputationData storage target = reputations[to];
+        target.currentRep += amount;
+        target.lifetimeRep += amount;
+
+        emit ReputationChanged(to, int256(amount), int256(amount), 0);
     }
 
     function slashRep(address account, uint256 amount) external onlyIOUNFT {
@@ -126,7 +137,7 @@ contract ReputationLedger is Ownable, IReputationLedger {
         return adjusted;
     }
 
-    function computeDecayedAmount(uint256 base, address to, address from) external view returns (uint256) {
+    function previewDecayedAmount(uint256 base, address to, address from) public view returns (uint256) {
         if (from == address(0) || from == to) {
             return base;
         }
@@ -158,5 +169,39 @@ contract ReputationLedger is Ownable, IReputationLedger {
         }
 
         return adjusted;
+    }
+
+    
+
+    /// @notice Record an interaction between `from` and `to`, advancing decay state.
+    function recordInteraction(address from, address to) external onlyIOUNFT {
+        if (from == address(0) || from == to) {
+            return;
+        }
+
+        (address a, address b) = from < to ? (from, to) : (to, from);
+        bytes32 key = keccak256(abi.encodePacked(a, b));
+        InteractionRecord storage record = interactions[key];
+
+        if (record.lastInteractionTs != 0 && block.timestamp > record.lastInteractionTs) {
+            uint256 elapsed = block.timestamp - record.lastInteractionTs;
+            uint8 recovered = uint8(elapsed / DECAY_WINDOW);
+            if (recovered > 0) {
+                if (record.decayLevel > recovered) {
+                    record.decayLevel -= recovered;
+                } else {
+                    record.decayLevel = 0;
+                }
+            }
+        }
+
+        // advance decay level by one (cap by max uint8)
+        record.decayLevel = record.decayLevel < type(uint8).max ? record.decayLevel + 1 : record.decayLevel;
+        record.lastInteractionTs = block.timestamp;
+        emit InteractionRecorded(a, b, record.decayLevel, record.lastInteractionTs);
+    }
+
+    function computeDecayedAmount(uint256 base, address to, address from) external view returns (uint256) {
+        return previewDecayedAmount(base, to, from);
     }
 }

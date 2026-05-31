@@ -4,5 +4,5 @@
 - ~~修改合約邏輯(新增一組狀態與函式)，以支援： Fulfiller 申請結案，Owner 收到後 確認/退回 ~~
 - ~~修改查詢頁面：Owed to me & Owed by me 下方都有按鈕，Owed by me 的是 Fulfiller 申請結案，Owed to me 的是 Owner確認/退回。token 在Fulfiller 申請結案，狀態未改前，Owed to me 的按鈕為灰色不可用，Fulfiller 申請結案後才變可用(Owed by me 的按鈕則轉為不可用)~~
 - ~~active 的 social IOU 的 轉移(三方驗證)~~
-- Repository 查詢頁面(總rep數、個人rep數、rep榜單)
+- ~~Repository 查詢頁面(總rep數、個人rep數、rep榜單)~~
 - DAO 提案發起、投票、Treasury 撥款

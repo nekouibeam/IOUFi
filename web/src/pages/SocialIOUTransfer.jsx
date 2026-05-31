@@ -202,7 +202,7 @@ export default function SocialIOUTransfer() {
       setRows(rawRows);
       setQueryTime(new Date().toLocaleString());
 
-      const tokenIds = rawRows.map((row) => row.token_id).filter((id) => id !== undefined && id !== null);
+      const tokenIds = rawRows.map((row) => row.tokenId ?? row.token_id).filter((id) => id !== undefined && id !== null);
       if (tokenIds.length) {
         const readProvider = await getReadProvider();
         const network = await readProvider.getNetwork();

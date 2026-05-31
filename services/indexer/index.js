@@ -7,10 +7,12 @@ const addressesByChain = require('../../web/src/contracts/addresses.json');
 
 const RPC = process.env.JSON_RPC_URL || 'http://127.0.0.1:8545';
 const IOUNFT_ADDRESS = process.env.IOUNFT_ADDRESS || process.env.CONTRACT_ADDRESS || '';
+const REPUTATION_LEDGER_ADDRESS = process.env.REPUTATION_LEDGER_ADDRESS || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, 'indexer.db');
 const IOUNFT_ABI = require('../../web/src/contracts/IOUNFT.json').abi;
+const REPUTATION_LEDGER_ABI = require('../../web/src/contracts/ReputationLedger.json').abi;
 
 
 const provider = new ethers.JsonRpcProvider(RPC);
@@ -18,6 +20,8 @@ const provider = new ethers.JsonRpcProvider(RPC);
 const db = new DatabaseSync(DB_PATH);
 let contract = null;
 let contractAddress = '';
+let reputationContract = null;
+let reputationContractAddress = '';
 
 // initialize schema
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
@@ -60,6 +64,30 @@ function prepare(sql) {
 }
 
 const insertProcessedEventStmt = prepare(`INSERT INTO processed_events(tx_hash, log_index, block_number, token_id, event_name, event_data) VALUES(@tx_hash, @log_index, @block_number, @token_id, @event_name, @event_data)`);
+
+const insertReputationEventStmt = prepare(`INSERT INTO reputation_events(tx_hash, log_index, block_number, address, current_delta, lifetime_delta, locked_delta, event_data) VALUES(@tx_hash, @log_index, @block_number, @address, @current_delta, @lifetime_delta, @locked_delta, @event_data)`);
+
+const insertInteractionEventStmt = prepare(`INSERT INTO interaction_events(tx_hash, log_index, block_number, addr_a, addr_b, decay_level, last_interaction_ts, event_data) VALUES(@tx_hash, @log_index, @block_number, @addr_a, @addr_b, @decay_level, @last_interaction_ts, @event_data)`);
+
+const upsertReputationAccountStmt = prepare(`
+INSERT INTO reputation_accounts(address, current_rep, lifetime_rep, locked_rep, voting_power, updated_at, last_block, last_tx_hash, last_log_index)
+VALUES(@address, @current_rep, @lifetime_rep, @locked_rep, @voting_power, @updated_at, @last_block, @last_tx_hash, @last_log_index)
+ON CONFLICT(address) DO UPDATE SET
+  current_rep=excluded.current_rep,
+  lifetime_rep=excluded.lifetime_rep,
+  locked_rep=excluded.locked_rep,
+  voting_power=excluded.voting_power,
+  updated_at=excluded.updated_at,
+  last_block=excluded.last_block,
+  last_tx_hash=excluded.last_tx_hash,
+  last_log_index=excluded.last_log_index
+`);
+
+const deleteAllReputationAccountsStmt = prepare(`DELETE FROM reputation_accounts`);
+const deleteReputationEventsGtBlock = prepare(`DELETE FROM reputation_events WHERE block_number > @block`);
+const selectReputationEventRowsOrdered = prepare(`SELECT event_data FROM reputation_events ORDER BY block_number, log_index`);
+const selectReputationAccountCountStmt = prepare(`SELECT COUNT(1) AS total FROM reputation_accounts`);
+const selectReputationAccountStmt = prepare(`SELECT address, current_rep, lifetime_rep, locked_rep, voting_power, updated_at, last_block, last_tx_hash, last_log_index FROM reputation_accounts WHERE lower(address)=lower(@address) LIMIT 1`);
 
 const insertOrUpdateTokenStmt = prepare(`
 INSERT INTO tokens(token_id, creator, fulfiller, owner, state, description, service_type, collateral, deadline, decayed_creator_rep_base, decayed_fulfiller_rep_base, close_requested, close_requested_at, rep_pre_awarded, rep_pre_awarded_amount, transferable, unhappy_close, transfer_requested, transfer_to, transfer_new_owner_confirmed, transfer_fulfiller_confirmed, transfer_requested_at, transfer_fee_paid, is_burned, created_at, updated_at, last_block, last_tx_hash, last_log_index)
@@ -196,6 +224,18 @@ async function resolveIOUNFTAddress() {
   return IOUNFT_ADDRESS || '';
 }
 
+async function resolveReputationLedgerAddress() {
+  const network = await provider.getNetwork();
+  const chainId = String(network.chainId);
+  const chainScopedAddress = addressesByChain?.[chainId]?.ReputationLedger;
+
+  if (chainScopedAddress) {
+    return chainScopedAddress;
+  }
+
+  return REPUTATION_LEDGER_ADDRESS || '';
+}
+
 async function initContract() {
   const resolvedAddress = await resolveIOUNFTAddress();
   if (!resolvedAddress) {
@@ -208,6 +248,20 @@ async function initContract() {
   contract = new ethers.Contract(resolvedAddress, IOUNFT_ABI, provider);
   console.log('Using IOUNFT contract', contractAddress);
   return contract;
+}
+
+async function initReputationContract() {
+  const resolvedAddress = await resolveReputationLedgerAddress();
+  if (!resolvedAddress) {
+    reputationContract = null;
+    reputationContractAddress = '';
+    return null;
+  }
+
+  reputationContractAddress = resolvedAddress;
+  reputationContract = new ethers.Contract(resolvedAddress, REPUTATION_LEDGER_ABI, provider);
+  console.log('Using ReputationLedger contract', reputationContractAddress);
+  return reputationContract;
 }
 
 function wireContractListeners(targetContract) {
@@ -268,6 +322,16 @@ function wireContractListeners(targetContract) {
   });
 }
 
+function wireReputationListeners(targetContract) {
+  targetContract.on('ReputationChanged', (account, currentDelta, lifetimeDelta, lockedDelta, event) => {
+    try { processEventIfConfirmed('ReputationChanged', { account, currentDelta, lifetimeDelta, lockedDelta }, event); } catch (err) { console.error(err); }
+  });
+  
+  targetContract.on('InteractionRecorded', (addrA, addrB, decayLevel, lastInteractionTs, event) => {
+    try { processEventIfConfirmed('InteractionRecorded', { addrA, addrB, decayLevel, lastInteractionTs }, event); } catch (err) { console.error(err); }
+  });
+}
+
 function serializeEventData(obj) {
   try { return JSON.stringify(obj); } catch (e) { return null; }
 }
@@ -280,6 +344,21 @@ function safeNumber(value) {
   } catch (_) {
     return null;
   }
+}
+
+function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined) return fallback;
+  try {
+    if (typeof value === 'bigint') return Number(value);
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeAddress(value) {
+  return value ? String(value).toLowerCase() : null;
 }
 
 function extractEventMeta(event) {
@@ -321,6 +400,39 @@ async function replayEventsInRange(fromBlock, toBlock) {
       } catch (err) {
         console.error(`replayEventsInRange error for ${eventName}`, err);
       }
+    }
+  }
+}
+
+async function replayReputationEventsInRange(fromBlock, toBlock) {
+  if (!reputationContract || fromBlock > toBlock) return;
+
+  const logs = await reputationContract.queryFilter('ReputationChanged', fromBlock, toBlock);
+  for (const log of logs) {
+    try {
+      await processEventIfConfirmed('ReputationChanged', {
+        account: log.args?.account,
+        currentDelta: log.args?.currentDelta,
+        lifetimeDelta: log.args?.lifetimeDelta,
+        lockedDelta: log.args?.lockedDelta,
+      }, log);
+    } catch (err) {
+      console.error('replayReputationEventsInRange error', err);
+    }
+  }
+
+  // replay InteractionRecorded events as well
+  const iLogs = await reputationContract.queryFilter('InteractionRecorded', fromBlock, toBlock);
+  for (const log of iLogs) {
+    try {
+      await processEventIfConfirmed('InteractionRecorded', {
+        addrA: log.args?.addrA,
+        addrB: log.args?.addrB,
+        decayLevel: log.args?.decayLevel,
+        lastInteractionTs: log.args?.lastInteractionTs,
+      }, log);
+    } catch (err) {
+      console.error('replayReputationEventsInRange InteractionRecorded error', err);
     }
   }
 }
@@ -459,6 +571,53 @@ function applyEventToTokens(eventName, data) {
   }
 }
 
+function applyEventToReputation(eventName, data) {
+  if (eventName !== 'ReputationChanged') return;
+
+  const now = Math.floor(Date.now() / 1000);
+  const address = normalizeAddress(data.account);
+  if (!address) return;
+
+  const existing = selectReputationAccountStmt.get({ address });
+  const currentDelta = toNumber(data.currentDelta, 0);
+  const lifetimeDelta = toNumber(data.lifetimeDelta, 0);
+  const lockedDelta = toNumber(data.lockedDelta, 0);
+
+  const currentRep = Math.max(0, toNumber(existing?.current_rep, 0) + currentDelta);
+  const lifetimeRep = Math.max(0, toNumber(existing?.lifetime_rep, 0) + lifetimeDelta);
+  const lockedRep = Math.max(0, toNumber(existing?.locked_rep, 0) + lockedDelta);
+  const votingPower = Math.max(0, currentRep - lockedRep);
+
+  upsertReputationAccountStmt.run({
+    address,
+    current_rep: currentRep,
+    lifetime_rep: lifetimeRep,
+    locked_rep: lockedRep,
+    voting_power: votingPower,
+    updated_at: data.timestamp || now,
+    last_block: data.blockNumber,
+    last_tx_hash: data.txHash,
+    last_log_index: data.logIndex,
+  });
+}
+
+function rebuildReputationFromEvents() {
+  console.log('Rebuilding reputation_accounts table from reputation_events...');
+  try {
+    db.exec('BEGIN');
+    deleteAllReputationAccountsStmt.run();
+    const rows = selectReputationEventRowsOrdered.all();
+    for (const row of rows) {
+      const data = JSON.parse(row.event_data);
+      applyEventToReputation('ReputationChanged', data);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
 function rebuildTokensFromProcessedEvents() {
   console.log('Rebuilding tokens table from processed_events...');
   try {
@@ -489,7 +648,8 @@ async function reconcileOnStartup() {
 }
 
 async function syncFromChain(source = 'poll') {
-  if (!contract || syncInFlight) return;
+  if (!contract && !reputationContract) return;
+  if (syncInFlight) return;
 
   syncInFlight = true;
   try {
@@ -498,11 +658,15 @@ async function syncFromChain(source = 'poll') {
     const lastBlock = last ? last.last_block : 0;
     const tokenCountRow = countTokensStmt.get();
     const tokenCount = tokenCountRow ? Number(tokenCountRow.total || 0) : 0;
+    const repAccountCountRow = selectReputationAccountCountStmt.get();
+    const repAccountCount = repAccountCountRow ? Number(repAccountCountRow.total || 0) : 0;
 
     if (lastBlock > currentBlock) {
       console.log('Detected possible reorg: last synced block', lastBlock, 'is greater than current chain head', currentBlock);
       deleteProcessedEventsGtBlock.run({ block: currentBlock });
+      deleteReputationEventsGtBlock.run({ block: currentBlock });
       rebuildTokensFromProcessedEvents();
+      rebuildReputationFromEvents();
       insertOrReplaceLastSync.run({ last_block: currentBlock });
       return;
     }
@@ -511,7 +675,13 @@ async function syncFromChain(source = 'poll') {
     const replayTo = currentBlock - CONFIRMATIONS;
     if (replayFrom <= replayTo) {
       console.log(!last ? 'Rebuilding index from chain logs' : 'Syncing missed events', { replayFrom, replayTo });
-      await replayEventsInRange(replayFrom, replayTo);
+      if (contract) {
+        await replayEventsInRange(replayFrom, replayTo);
+      }
+      if (reputationContract) {
+        const reputationReplayFrom = repAccountCount === 0 ? 0 : replayFrom;
+        await replayReputationEventsInRange(reputationReplayFrom, replayTo);
+      }
     }
 
     insertOrReplaceLastSync.run({ last_block: currentBlock });
@@ -567,6 +737,16 @@ async function processEventIfConfirmed(eventName, args, event) {
       payload.treasury = args.treasury || args[0] || null;
     } else if (eventName === 'ReputationLedgerUpdated') {
       payload.reputationLedger = args.reputationLedger || args[0] || null;
+    } else if (eventName === 'ReputationChanged') {
+      payload.account = args.account || args[0] || null;
+      payload.currentDelta = args.currentDelta ?? args[1] ?? null;
+      payload.lifetimeDelta = args.lifetimeDelta ?? args[2] ?? null;
+      payload.lockedDelta = args.lockedDelta ?? args[3] ?? null;
+    } else if (eventName === 'InteractionRecorded') {
+      payload.addrA = args.addrA || args[0] || null;
+      payload.addrB = args.addrB || args[1] || null;
+      payload.decayLevel = args.decayLevel ?? args[2] ?? null;
+      payload.lastInteractionTs = args.lastInteractionTs ?? args[3] ?? null;
     }
 
     try {
@@ -578,6 +758,46 @@ async function processEventIfConfirmed(eventName, args, event) {
     }
 
     applyEventToTokens(eventName, payload);
+    if (eventName === 'ReputationChanged') {
+      try {
+        insertReputationEventStmt.run({
+          tx_hash: txHash,
+          log_index: logIndex,
+          block_number: blockNumber,
+          address: normalizeAddress(payload.account),
+          current_delta: toNumber(payload.currentDelta, 0),
+          lifetime_delta: toNumber(payload.lifetimeDelta, 0),
+          locked_delta: toNumber(payload.lockedDelta, 0),
+          event_data: serializeEventData(payload),
+        });
+      } catch (e) {
+        if (e && e.code && e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') return;
+        if (String(e).includes('UNIQUE') || String(e).includes('PRIMARY')) return;
+        throw e;
+      }
+      applyEventToReputation(eventName, payload);
+    }
+
+    if (eventName === 'InteractionRecorded') {
+      try {
+        const addrA = normalizeAddress(payload.addrA);
+        const addrB = normalizeAddress(payload.addrB);
+        insertInteractionEventStmt.run({
+          tx_hash: txHash,
+          log_index: logIndex,
+          block_number: blockNumber,
+          addr_a: addrA,
+          addr_b: addrB,
+          decay_level: toNumber(payload.decayLevel, 0),
+          last_interaction_ts: toNumber(payload.lastInteractionTs, 0),
+          event_data: serializeEventData(payload),
+        });
+      } catch (e) {
+        if (e && e.code && e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') return;
+        if (String(e).includes('UNIQUE') || String(e).includes('PRIMARY')) return;
+        throw e;
+      }
+    }
 
     if (tokenId && ['IOUCreated', 'IOUAccepted', 'IOUSettled', 'IOURefunded', 'CloseRequested', 'CloseConfirmed', 'CloseRejected', 'TransferInitiated', 'TransferConfirmed', 'TransferCompleted', 'TransferRejected'].includes(eventName)) {
       try {
@@ -664,10 +884,16 @@ async function fetchIOUWithRetry(tokenId) {
 async function bootstrap() {
   try {
     await initContract();
+    await initReputationContract();
     if (contract) {
       wireContractListeners(contract);
     } else {
       console.warn('No IOUNFT address resolved yet; indexer will stay passive until addresses.json is in sync.');
+    }
+    if (reputationContract) {
+      wireReputationListeners(reputationContract);
+    } else {
+      console.warn('No ReputationLedger address resolved yet; reputation indexing will stay passive until addresses.json is in sync.');
     }
 
     await reconcileOnStartup();

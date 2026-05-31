@@ -2,123 +2,214 @@ import fs from 'fs';
 import { ethers } from 'ethers';
 
 /*
-  Demo script (Node) — 中文註解說明
+  Demo script (Node)
 
-  目的：在本地 Anvil 節點上自動化驗證 IOUNFT 的完整流程：
-    1) 讀取前端的部署地址與 ABI
-    2) 使用 Anvil 解鎖的帳戶（eth_accounts）當作 creator/fulfiller
-    3) 送出 mintIOU (payable) 交易並等待打包
-    4) 呼叫 acceptIOU
-    5) 呼叫 settleSocialIOU
-    6) 在每個階段以 getIOU 檢查合約狀態
+  Purpose:
+    1) Load latest deployed addresses + ABIs from web/src/contracts
+    2) Use Anvil unlocked accounts as creator / fulfiller
+    3) Run two flows against current contract interface:
+       - Social flow: mint (0 collateral) -> accept -> settleSocialIOU
+       - Bounty flow: mint (>0 collateral) -> accept -> settleBountyIOU
+    4) Check IOU snapshots at each stage
+    5) Verify InteractionRecorded and optional indexer API aggregation
 
-  注意事項：
-    - 本腳本使用 `provider.send('eth_sendTransaction', [...])` 與 `eth_accounts`，
-      這需要節點（Anvil）提供已解鎖帳戶；此方式不適用於 MetaMask 瀏覽器環境。
-    - 若要在瀏覽器進行同樣流程，前端需透過 injected signer 與使用者簽名。
-    - 本腳本主要用於 CI / 本地快速驗證合約邏輯與 ABI 正確性。
-
-  測試重點（此腳本驗證）：
-    - ABI 與地址是否正確讀取。
-    - mintIOU 在鏈上被接收並改變合約狀態（檢查 nextTokenId 與 getIOU）。
-    - acceptIOU 能讓 IOU 由 Pending 轉為 Active（或設定 fulfiller）。
-    - settleSocialIOU（social 路徑）在 creator 呼叫下能完成結算流程。
-    - 交易被礦工接受與打包（使用 waitForTransaction 檢查）。
+  Requirements:
+    - Local Anvil RPC at http://127.0.0.1:8545
+    - Contract addresses synced in web/src/contracts/addresses.json
+    - (Optional) Query API at http://127.0.0.1:4000 for interaction summary check
 */
 
+const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:8545';
+const API_BASE = process.env.API_BASE || 'http://127.0.0.1:4000';
+
+function readJson(relativePath) {
+  return JSON.parse(fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8'));
+}
+
+function toInt(value, fallback = 0) {
+  try {
+    return Number(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeAddress(value) {
+  return value ? String(value).toLowerCase() : null;
+}
+
+function formatIOU(snapshot) {
+  return {
+    creator: normalizeAddress(snapshot.creator ?? snapshot[0]),
+    fulfiller: normalizeAddress(snapshot.fulfiller ?? snapshot[1]),
+    collateral: (snapshot.collateral ?? snapshot[2])?.toString?.() ?? String(snapshot.collateral ?? snapshot[2] ?? 0),
+    state: toInt(snapshot.state ?? snapshot[3], -1),
+    deadline: toInt(snapshot.deadline ?? snapshot[5], 0),
+    description: snapshot.description ?? snapshot[6] ?? '',
+    serviceType: snapshot.serviceType ?? snapshot[7] ?? '',
+    rawCreatorRepBase: toInt(snapshot.rawCreatorRepBase ?? snapshot[8], 0),
+    rawFulfillerRepBase: toInt(snapshot.rawFulfillerRepBase ?? snapshot[9], 0),
+    decayedCreatorRepBase: toInt(snapshot.decayedCreatorRepBase ?? snapshot[10], 0),
+    decayedFulfillerRepBase: toInt(snapshot.decayedFulfillerRepBase ?? snapshot[11], 0),
+    repBaseFrozen: Boolean(snapshot.repBaseFrozen ?? snapshot[12]),
+    repPreAwarded: Boolean(snapshot.repPreAwarded ?? snapshot[15]),
+    repPreAwardedAmount: toInt(snapshot.repPreAwardedAmount ?? snapshot[16], 0),
+  };
+}
+
+async function waitTx(label, txPromise) {
+  const tx = await txPromise;
+  const receipt = await tx.wait();
+  console.log(`${label} tx: ${receipt.hash} @ block ${receipt.blockNumber}`);
+  return receipt;
+}
+
+async function printInteractionRecord(reputationContract, creatorAddr, fulfillerAddr) {
+  const a = normalizeAddress(creatorAddr) < normalizeAddress(fulfillerAddr)
+    ? normalizeAddress(creatorAddr)
+    : normalizeAddress(fulfillerAddr);
+  const b = a === normalizeAddress(creatorAddr)
+    ? normalizeAddress(fulfillerAddr)
+    : normalizeAddress(creatorAddr);
+  const key = ethers.keccak256(ethers.solidityPacked(['address', 'address'], [a, b]));
+  const record = await reputationContract.interactions(key);
+  console.log('interaction record:', {
+    decayLevel: toInt(record.decayLevel ?? record[0], 0),
+    lastInteractionTs: toInt(record.lastInteractionTs ?? record[1], 0),
+    key,
+  });
+}
+
+async function maybeCheckInteractionSummaryApi(addresses, expectedMinTs = 0) {
+  try {
+    const deadline = Date.now() + 15000;
+    let tracked = [];
+    while (Date.now() < deadline) {
+      const url = `${API_BASE}/api/reputation/interactions/summary?limit=20`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.log(`interaction summary api unavailable: ${res.status}`);
+        return;
+      }
+      const payload = await res.json();
+      const rows = Array.isArray(payload.data) ? payload.data : [];
+      tracked = rows.filter((row) => addresses.includes(normalizeAddress(row.address)));
+
+      const hasExpected = tracked.length > 0 && tracked.every((row) => toInt(row.lastInteractionTs, 0) >= expectedMinTs);
+      if (hasExpected || expectedMinTs <= 0) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    console.log('interaction summary api rows (tracked addresses):', tracked);
+    if (expectedMinTs > 0) {
+      const stale = tracked.some((row) => toInt(row.lastInteractionTs, 0) < expectedMinTs);
+      if (stale) {
+        console.log('warning: api summary has not fully caught up to latest chain interaction yet');
+      }
+    }
+  } catch (err) {
+    console.log('interaction summary api not reachable, skipped:', err?.message || String(err));
+  }
+}
+
 async function main() {
-  // 建立到本地 Anvil 的 JSON-RPC provider
-  const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-  // 讀取前端同步後的合約地址與 ABI 檔案
-  // addresses.json 以 chainId 作為最外層鍵，內含多個合約地址
-  const addresses = JSON.parse(fs.readFileSync(new URL('../src/contracts/addresses.json', import.meta.url)));
-  // 讀取 IOUNFT 的 ABI JSON（artifact）並從中取出 ABI 陣列
-  const iouJson = JSON.parse(fs.readFileSync(new URL('../src/contracts/IOUNFT.json', import.meta.url)));
-  const abi = iouJson.abi;
-  const chainId = Object.keys(addresses)[0] || '31337';
-  const iouAddr = addresses[chainId].IOUNFT;
+  const addressesByChain = readJson('../src/contracts/addresses.json');
+  const iouArtifact = readJson('../src/contracts/IOUNFT.json');
+  const reputationArtifact = readJson('../src/contracts/ReputationLedger.json');
 
-  // 取得節點解鎖（unlocked）的帳戶列表
-  // 注意：此方法依賴 Anvil 自動解鎖帳戶；在真實節點或 MetaMask 下行為不同
+  const network = await provider.getNetwork();
+  const chainId = String(network.chainId);
+  const scoped = addressesByChain[chainId];
+  if (!scoped?.IOUNFT || !scoped?.ReputationLedger) {
+    throw new Error(`Missing IOUNFT/ReputationLedger address for chain ${chainId} in addresses.json`);
+  }
+
   const accounts = await provider.send('eth_accounts', []);
-  // 使用第一個帳戶做為 creator（發起者）、第二個做為 fulfiller（履行者）
+  if (accounts.length < 2) {
+    throw new Error('Need at least 2 unlocked accounts on RPC node');
+  }
+
   const creatorAddr = accounts[0];
   const fulfillerAddr = accounts[1];
-  // 透過 provider 取得 signer 物件，以便後續建立 signer-bound contract
-  const creator = provider.getSigner(creatorAddr);
-  const fulfiller = provider.getSigner(fulfillerAddr);
-  console.log('Creator:', creatorAddr);
-  console.log('Fulfiller:', fulfillerAddr);
+  const creator = await provider.getSigner(creatorAddr);
+  const fulfiller = await provider.getSigner(fulfillerAddr);
 
-  const iouCreator = new ethers.Contract(iouAddr, abi, creator);
-  const iouFulfiller = new ethers.Contract(iouAddr, abi, fulfiller);
-  const iouProvider = new ethers.Contract(iouAddr, abi, provider);
+  console.log('network:', { chainId, rpc: RPC_URL });
+  console.log('creator:', creatorAddr);
+  console.log('fulfiller:', fulfillerAddr);
+  console.log('contracts:', { IOUNFT: scoped.IOUNFT, ReputationLedger: scoped.ReputationLedger });
 
-  // 在 mint 前查詢 nextTokenId，作為本次 mint 將使用的 tokenId
-  const nextIdBefore = await iouProvider.nextTokenId();
-  console.log('nextTokenId (before):', nextIdBefore.toString());
+  const iouAsCreator = new ethers.Contract(scoped.IOUNFT, iouArtifact.abi, creator);
+  const iouAsFulfiller = new ethers.Contract(scoped.IOUNFT, iouArtifact.abi, fulfiller);
+  const iouRead = new ethers.Contract(scoped.IOUNFT, iouArtifact.abi, provider);
+  const reputationRead = new ethers.Contract(scoped.ReputationLedger, reputationArtifact.abi, provider);
 
-  // 設定一小時後到期（deadline 是 UNIX timestamp）
-  const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-  console.log('Minting IOU (paying 0.01 ETH collateral) via eth_sendTransaction...');
+  const now = Math.floor(Date.now() / 1000);
 
-  // 使用 Contract Interface 將 mintIOU() 的參數 ABI encode 成 calldata
-  // 參數順序與合約定義相符：fulfiller, deadline, transferable, lifetimeRepReward
-  const mintData = iouProvider.interface.encodeFunctionData('mintIOU', [fulfillerAddr, deadline, false, 100]);
+  // Flow A: Social IOU (collateral = 0)
+  console.log('\n=== Flow A: Social IOU ===');
+  const socialId = await iouRead.nextTokenId();
+  await waitTx(
+    'social mint',
+    iouAsCreator.mintIOU(fulfillerAddr, BigInt(now + 3600), false, 'demo social iou', 'general')
+  );
+  console.log('social after mint:', formatIOU(await iouRead.getIOU(socialId)));
 
-  // 將 ETH 數值轉成 16 進位的 hex string 作為 tx.value
-  const mintValue = '0x' + ethers.parseEther('0.01').toString(16);
+  await waitTx('social accept', iouAsFulfiller.acceptIOU(socialId));
+  console.log('social after accept:', formatIOU(await iouRead.getIOU(socialId)));
 
-  // 由於我們使用的是本地節點（Anvil）且帳戶已解鎖，直接呼叫 eth_sendTransaction
-  // 注意：在有錢包（MetaMask）時應使用 signer.sendTransaction 或 contract.connect(signer).mintIOU(...)
-  const mintHash = await provider.send('eth_sendTransaction', [
-    { from: creatorAddr, to: iouAddr, data: mintData, value: mintValue }
-  ]);
-  console.log('mint tx hash:', mintHash);
+  await waitTx('social settle', iouAsCreator.settleSocialIOU(socialId, 2));
+  console.log('social after settle:', formatIOU(await iouRead.getIOU(socialId)));
 
-  // 等待交易被礦工（Anvil）打包並回傳交易 receipt
-  const mintRec = await provider.waitForTransaction(mintHash);
-  console.log('mint mined, block:', mintRec.blockNumber);
+  // Flow B: Bounty IOU (collateral > 0)
+  console.log('\n=== Flow B: Bounty IOU ===');
+  const bountyId = await iouRead.nextTokenId();
+  await waitTx(
+    'bounty mint',
+    iouAsCreator.mintIOU(
+      fulfillerAddr,
+      BigInt(now + 7200),
+      false,
+      'demo bounty iou',
+      'bugfix',
+      { value: ethers.parseEther('0.01') }
+    )
+  );
+  console.log('bounty after mint:', formatIOU(await iouRead.getIOU(bountyId)));
 
-  // 由於 nextTokenId 在 mint 前回傳的值為本次 tokenId，直接使用它
-  const tokenId = nextIdBefore;
-  console.log('Minted tokenId:', tokenId.toString());
+  await waitTx('bounty accept', iouAsFulfiller.acceptIOU(bountyId));
+  console.log('bounty after accept:', formatIOU(await iouRead.getIOU(bountyId)));
 
-  // 讀取合約上的 IOU 資料以驗證 mint 結果（creator、fulfiller、collateral、state 等）
-  const iouData = await iouProvider.getIOU(tokenId);
-  console.log('IOU data after mint:', iouData);
+  await waitTx('bounty settle', iouAsCreator.settleBountyIOU(bountyId, 1));
+  console.log('bounty after settle:', formatIOU(await iouRead.getIOU(bountyId)));
 
-  console.log('Calling acceptIOU from fulfiller via eth_sendTransaction...');
-  // encode 並送出 acceptIOU，由 fulfiller 帳戶呼叫（或由任意帳戶成為 fulfiller）
-  const acceptData = iouProvider.interface.encodeFunctionData('acceptIOU', [tokenId]);
-  const acceptHash = await provider.send('eth_sendTransaction', [
-    { from: fulfillerAddr, to: iouAddr, data: acceptData }
-  ]);
-  console.log('accept tx hash:', acceptHash);
+  // Reputation checks
+  const creatorRep = await reputationRead.getReputation(creatorAddr);
+  const fulfillerRep = await reputationRead.getReputation(fulfillerAddr);
+  console.log('\nreputation snapshot:', {
+    creator: {
+      currentRep: toInt(creatorRep[0], 0),
+      lifetimeRep: toInt(creatorRep[1], 0),
+      lockedRep: toInt(creatorRep[2], 0),
+    },
+    fulfiller: {
+      currentRep: toInt(fulfillerRep[0], 0),
+      lifetimeRep: toInt(fulfillerRep[1], 0),
+      lockedRep: toInt(fulfillerRep[2], 0),
+    },
+  });
 
-  // 等待 accept 的交易被打包
-  await provider.waitForTransaction(acceptHash);
-  console.log('Accepted.');
+  await printInteractionRecord(reputationRead, creatorAddr, fulfillerAddr);
+  const nowOnChain = await provider.getBlock('latest');
+  const expectedMinTs = toInt(nowOnChain?.timestamp, 0) - 1;
+  await maybeCheckInteractionSummaryApi([normalizeAddress(creatorAddr), normalizeAddress(fulfillerAddr)], expectedMinTs);
 
-  // 再次查詢 IOU 狀態以確認已從 Pending 變成 Active
-  const iouAfterAccept = await iouProvider.getIOU(tokenId);
-  console.log('IOU after accept:', iouAfterAccept);
-
-  console.log('Settling (settleSocialIOU) from creator with rating 5 via eth_sendTransaction...');
-  // settleSocialIOU 由 creator 呼叫；此路徑要求 collateral == 0（social IOU）
-  const settleData = iouProvider.interface.encodeFunctionData('settleSocialIOU', [tokenId, 5]);
-  const settleHash = await provider.send('eth_sendTransaction', [
-    { from: creatorAddr, to: iouAddr, data: settleData }
-  ]);
-  console.log('settle tx hash:', settleHash);
-
-  // 等待結算交易被打包
-  const settleRec = await provider.waitForTransaction(settleHash);
-  console.log('settled, block:', settleRec.blockNumber);
-
-  const final = await iouProvider.getIOU(tokenId);
-  console.log('Final IOU:', final);
+  console.log('\nDemo completed successfully.');
 }
 
 main().catch((err) => {

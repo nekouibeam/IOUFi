@@ -5,25 +5,26 @@ export function normalizeAddress(value) {
 }
 
 export function buildTokenView(row, enriched) {
-  const chain = enriched[String(row.token_id)] || null;
+  const id = row.tokenId ?? row.token_id;
+  const chain = enriched[String(id)] || null;
   const displayedState = chain?.state ?? row.state;
   const displayedDescription = chain?.description ?? row.description ?? '—';
-  const displayedServiceType = chain?.serviceType ?? chain?.service_type ?? row.service_type ?? '—';
+  const displayedServiceType = chain?.serviceType ?? chain?.service_type ?? row.serviceType ?? row.service_type ?? '—';
   const displayedCollateral = chain?.collateral ?? row.collateral ?? row.value ?? null;
-  const displayedCloseRequested = chain?.closeRequested ?? row.close_requested ?? false;
-  const displayedCloseRequestedAt = chain?.closeRequestedAt ?? row.close_requested_at ?? null;
-  const displayedRepPreAwarded = chain?.repPreAwarded ?? row.rep_pre_awarded ?? false;
-  const displayedRepPreAwardedAmount = chain?.repPreAwardedAmount ?? row.rep_pre_awarded_amount ?? null;
-  const displayedTransferRequested = chain?.transferRequested ?? row.transfer_requested ?? false;
-  const displayedTransferTo = chain?.transferTo ?? row.transfer_to ?? null;
-  const displayedTransferNewOwnerConfirmed = chain?.transferNewOwnerConfirmed ?? row.transfer_new_owner_confirmed ?? false;
-  const displayedTransferFulfillerConfirmed = chain?.transferFulfillerConfirmed ?? row.transfer_fulfiller_confirmed ?? false;
-  const displayedTransferRequestedAt = chain?.transferRequestedAt ?? row.transfer_requested_at ?? null;
-  const displayedTransferFeePaid = chain?.transferFeePaid ?? row.transfer_fee_paid ?? null;
+  const displayedCloseRequested = chain?.closeRequested ?? row.closeRequested ?? row.close_requested ?? false;
+  const displayedCloseRequestedAt = chain?.closeRequestedAt ?? row.closeRequestedAt ?? row.close_requested_at ?? null;
+  const displayedRepPreAwarded = chain?.repPreAwarded ?? row.repPreAwarded ?? row.rep_pre_awarded ?? false;
+  const displayedRepPreAwardedAmount = chain?.repPreAwardedAmount ?? row.repPreAwardedAmount ?? row.rep_pre_awarded_amount ?? null;
+  const displayedTransferRequested = chain?.transferRequested ?? row.transferRequested ?? row.transfer_requested ?? false;
+  const displayedTransferTo = chain?.transferTo ?? row.transferTo ?? row.transfer_to ?? null;
+  const displayedTransferNewOwnerConfirmed = chain?.transferNewOwnerConfirmed ?? row.transferNewOwnerConfirmed ?? row.transfer_new_owner_confirmed ?? false;
+  const displayedTransferFulfillerConfirmed = chain?.transferFulfillerConfirmed ?? row.transferFulfillerConfirmed ?? row.transfer_fulfiller_confirmed ?? false;
+  const displayedTransferRequestedAt = chain?.transferRequestedAt ?? row.transferRequestedAt ?? row.transfer_requested_at ?? null;
+  const displayedTransferFeePaid = chain?.transferFeePaid ?? row.transferFeePaid ?? row.transfer_fee_paid ?? null;
   const syncing = String(row.state) !== String(displayedState);
 
   return {
-    tokenId: row.token_id,
+    tokenId: id,
     creator: normalizeAddress(row.creator),
     fulfiller: normalizeAddress(row.fulfiller),
     owner: normalizeAddress(chain?.owner ?? row.owner),

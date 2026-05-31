@@ -26,7 +26,7 @@ export default function AcceptIOU() {
 
   const socialPending = useMemo(() => {
     return items.filter((row) => {
-      const tokenId = String(row.token_id);
+      const tokenId = String(row.tokenId ?? row.token_id);
       const state = Number(row.state);
       const collateral = asBigInt(row.collateral);
       const fulfiller = normalizeAddress(row.fulfiller);
@@ -133,7 +133,7 @@ export default function AcceptIOU() {
         next.add(String(tokenId));
         return next;
       });
-      setItems((prev) => prev.filter((r) => String(r.token_id) !== String(tokenId)));
+      setItems((prev) => prev.filter((r) => String(r.tokenId ?? r.token_id) !== String(tokenId)));
       setStatus(`Token #${tokenId} 已接受，狀態應轉為 Active。`);
       await loadInbox();
     } catch (err) {
@@ -189,8 +189,8 @@ export default function AcceptIOU() {
 
         <div className="nft-grid" style={{ marginTop: 10 }}>
           {socialPending.map((row) => (
-            <article className="nft-card" key={String(row.token_id)}>
-              <div className="nft-id">Token #{row.token_id}</div>
+            <article className="nft-card" key={String(row.tokenId ?? row.token_id)}>
+              <div className="nft-id">Token #{row.tokenId ?? row.token_id}</div>
               <div className="nft-desc">{row.description || 'No description'}</div>
               <div className="nft-meta" style={{ marginBottom: 10 }}>
                 <span className="tag">state: Pending</span>
@@ -202,10 +202,10 @@ export default function AcceptIOU() {
               <div style={{ marginTop: 10 }}>
                 <button
                   className="btn primary"
-                  onClick={() => acceptToken(row.token_id)}
-                  disabled={busy || String(busyTokenId) === String(row.token_id)}
+                  onClick={() => acceptToken(row.tokenId ?? row.token_id)}
+                  disabled={busy || String(busyTokenId) === String(row.tokenId ?? row.token_id)}
                 >
-                  {String(busyTokenId) === String(row.token_id) ? '處理中…' : '確認 / 接受此 IOU'}
+                  {String(busyTokenId) === String(row.tokenId ?? row.token_id) ? '處理中…' : '確認 / 接受此 IOU'}
                 </button>
               </div>
             </article>

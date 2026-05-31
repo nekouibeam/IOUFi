@@ -5,6 +5,7 @@ export default function Layout({ children }) {
   const loc = useLocation();
   const navItems = [
     { to: '/', label: '總覽', icon: '⌂' },
+    { to: '/reputation', label: 'Reputation', icon: '★' },
     { to: '/create', label: '發放人情債', icon: '＋' },
     { to: '/accept', label: '待確認', icon: '✓' },
     { to: '/ious', label: 'IOU 查詢', icon: '⇄' },

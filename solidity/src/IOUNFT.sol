@@ -23,8 +23,11 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         uint256 deadline;
         string description;
         string serviceType;
+        uint256 rawCreatorRepBase;
+        uint256 rawFulfillerRepBase;
         uint256 decayedCreatorRepBase;
         uint256 decayedFulfillerRepBase;
+        bool repBaseFrozen;
         bool closeRequested;
         uint256 closeRequestedAt;
         bool repPreAwarded;
@@ -193,19 +196,8 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
 
         _mint(msg.sender, tokenId);
         // determine raw bases based on Social vs Bounty
-        uint256 rawCreatorBase = fulfiller == address(0) || msg.value == 0 ? 10 : 8;
+        uint256 rawCreatorBase = msg.value == 0 ? 10 : 8;
         uint256 rawFulfillerBase = msg.value == 0 ? 8 : 10;
-
-        uint256 decayedCreator = 0;
-        uint256 decayedFulfiller = 0;
-        if (address(reputationLedger) != address(0)) {
-            decayedCreator = reputationLedger.computeDecayedAmount(rawCreatorBase, msg.sender, fulfiller);
-            if (fulfiller != address(0)) {
-                decayedFulfiller = reputationLedger.computeDecayedAmount(rawFulfillerBase, fulfiller, msg.sender);
-            } else {
-                decayedFulfiller = reputationLedger.computeDecayedAmount(rawFulfillerBase, address(0), msg.sender);
-            }
-        }
 
         ious[tokenId] = IOUData({
             creator: msg.sender,
@@ -216,8 +208,11 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             deadline: deadline,
             description: description,
             serviceType: serviceType,
-            decayedCreatorRepBase: decayedCreator,
-            decayedFulfillerRepBase: decayedFulfiller,
+            rawCreatorRepBase: rawCreatorBase,
+            rawFulfillerRepBase: rawFulfillerBase,
+            decayedCreatorRepBase: 0,
+            decayedFulfillerRepBase: 0,
+            repBaseFrozen: false,
             closeRequested: false,
             closeRequestedAt: 0,
             repPreAwarded: false,
@@ -232,6 +227,10 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             transferFeePaid: 0
         });
 
+        if (msg.value == 0 && fulfiller != address(0)) {
+            _freezeRepBase(tokenId);
+        }
+
         emit IOUCreated(tokenId, msg.sender, fulfiller, msg.value);
     }
 
@@ -240,12 +239,13 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         require(iou.fulfiller == address(0) || iou.fulfiller == msg.sender, "IOUNFT: not fulfiller");
 
         iou.fulfiller = msg.sender;
+        _freezeRepBase(tokenId);
         iou.state = State.Active;
         // pre-award creator half of decayedCreatorRepBase if configured
         if (address(reputationLedger) != address(0) && !iou.repPreAwarded && iou.decayedCreatorRepBase > 0) {
             uint256 preAward = (iou.decayedCreatorRepBase * 5) / 10;
             if (preAward > 0) {
-                reputationLedger.awardRep(iou.creator, preAward, iou.fulfiller);
+                reputationLedger.awardRepFixed(iou.creator, preAward);
                 iou.repPreAwarded = true;
                 iou.repPreAwardedAmount = preAward;
             }
@@ -344,26 +344,26 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
             // Great: creator gets floor(creatorBase * 5/10), fulfiller gets fulfillerBase
             uint256 creatorAward = (creatorBase * 5) / 10;
             if (creatorAward > 0) {
-                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+                reputationLedger.awardRepFixed(iou.creator, creatorAward);
             }
             if (fulfillerBase > 0 && iou.fulfiller != address(0)) {
-                reputationLedger.awardRep(iou.fulfiller, fulfillerBase, iou.creator);
+                reputationLedger.awardRepFixed(iou.fulfiller, fulfillerBase);
             }
         } else if (rating == 1) {
             // Neutral: creator floor(creatorBase * 3/10), fulfiller floor(fulfillerBase * 6/10)
             uint256 creatorAward = (creatorBase * 3) / 10;
             uint256 fulfillerAward = (fulfillerBase * 6) / 10;
             if (fulfillerAward > 0 && iou.fulfiller != address(0)) {
-                reputationLedger.awardRep(iou.fulfiller, fulfillerAward, iou.creator);
+                reputationLedger.awardRepFixed(iou.fulfiller, fulfillerAward);
             }
             if (creatorAward > 0) {
-                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+                reputationLedger.awardRepFixed(iou.creator, creatorAward);
             }
         } else if (rating == 0) {
             // Bad: creator floor(creatorBase * 1/10), fulfiller gets 0 and is slashed
             uint256 creatorAward = (creatorBase * 1) / 10;
             if (creatorAward > 0) {
-                reputationLedger.awardRep(iou.creator, creatorAward, iou.fulfiller);
+                reputationLedger.awardRepFixed(iou.creator, creatorAward);
             }
             if (iou.fulfiller != address(0)) {
                 reputationLedger.slashRep(iou.fulfiller, 1);
@@ -457,6 +457,28 @@ contract IOUNFT is ERC721, Ownable, ReentrancyGuard {
         require(address(this).balance >= amount, "IOUNFT: insufficient balance");
         (bool ok, ) = to.call{value: amount}("");
         require(ok, "IOUNFT: eth transfer failed");
+    }
+
+    function _freezeRepBase(uint256 tokenId) internal {
+        IOUData storage iou = ious[tokenId];
+        if (iou.repBaseFrozen) {
+            return;
+        }
+
+        uint256 creatorBase = iou.rawCreatorRepBase;
+        uint256 fulfillerBase = iou.rawFulfillerRepBase;
+        if (address(reputationLedger) != address(0)) {
+            creatorBase = reputationLedger.previewDecayedAmount(iou.rawCreatorRepBase, iou.creator, iou.fulfiller);
+            fulfillerBase = reputationLedger.previewDecayedAmount(iou.rawFulfillerRepBase, iou.fulfiller, iou.creator);
+        }
+
+        iou.decayedCreatorRepBase = creatorBase;
+        iou.decayedFulfillerRepBase = fulfillerBase;
+        iou.repBaseFrozen = true;
+        // advance decay state for this pair in the ReputationLedger
+        if (address(reputationLedger) != address(0) && iou.creator != iou.fulfiller) {
+            reputationLedger.recordInteraction(iou.creator, iou.fulfiller);
+        }
     }
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
