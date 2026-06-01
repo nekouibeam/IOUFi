@@ -168,7 +168,10 @@ export default function SocialIOUTransfer() {
   const acct = normalizeAddress(account);
 
   const tokens = useMemo(() => rows.map((row) => buildTokenView(row, enriched)), [rows, enriched]);
-  const ownerTokens = useMemo(() => tokens.filter((token) => token.owner === acct && Number(token.collateral || 0) === 0), [tokens, acct]);
+  const ownerTokens = useMemo(
+    () => tokens.filter((token) => token.owner === acct && Number(token.collateral || 0) === 0 && Number(token.state) === 1),
+    [tokens, acct],
+  );
   const newOwnerTokens = useMemo(() => tokens.filter((token) => token.transferRequested && normalizeAddress(token.transferTo) === acct && Number(token.state) === 1 && Number(token.collateral || 0) === 0), [tokens, acct]);
   const fulfillerTokens = useMemo(() => tokens.filter((token) => token.transferRequested && token.fulfiller === acct && Number(token.state) === 1 && Number(token.collateral || 0) === 0), [tokens, acct]);
 

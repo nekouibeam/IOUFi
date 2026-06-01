@@ -36,6 +36,48 @@
   .page-title{font-size:20px;font-weight:500;margin-bottom:4px}
   .page-sub{color:var(--muted);font-size:13px;margin-bottom:24px}
 
+  .page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+  .page-note{color:var(--muted);font-size:13px;max-width:720px;line-height:1.6}
+  .dao-demo-badge{align-self:flex-start;padding:8px 12px;border-radius:999px;background:var(--accent-bg);color:var(--accent);font-size:12px;font-weight:500;letter-spacing:.4px;white-space:nowrap}
+  .dao-layout{display:grid;gap:18px}
+  /* DAO page specific layout: separate the three vertical sections */
+  .dao-page{max-width:980px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:20px;padding:16px}
+  .dao-page section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:0 1px 0 rgba(0,0,0,0.03)}
+  .proposal-area, .voting-area, .results-area{min-height:140px}
+  .proposal-area h2,.voting-area h2,.results-area h2{margin-top:0}
+  @media(max-width:700px){.dao-page{padding:12px;gap:12px}}
+  .dao-hero{align-items:start}
+  .dao-action-card{display:grid;gap:10px}
+  .dao-action-row{flex-wrap:wrap}
+  .dao-summary{border-radius:22px}
+  .dao-sections{display:grid;gap:18px}
+  .dao-block{display:grid;gap:16px}
+  .dao-form-card{background:#faf8f3;border:1px solid var(--border);border-radius:18px;padding:16px}
+  .dao-form{display:grid;gap:12px}
+  .dao-list-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+  .dao-card{display:grid;gap:12px;background:#fffdfa;min-width:0;width:100%;overflow:hidden}
+  .dao-card .iou-token,.dao-card .iou-subtitle{word-break:break-word}
+  .dao-card-meta,.dao-vote-meta,.dao-result-grid{display:flex;flex-wrap:wrap;gap:8px}
+  .dao-card-meta,.dao-vote-meta,.dao-result-grid{min-width:0}
+  .dao-card-meta{flex-direction:column;align-items:flex-start}
+  .dao-card-meta .chip,
+  .dao-vote-meta .chip,
+  .dao-result-grid .chip{max-width:100%;white-space:normal;line-height:1.4;word-break:break-all}
+  .dao-card-meta .chip{width:100%}
+  .dao-vote-actions{margin-top:2px}
+  .dao-section{border-radius:22px}
+  .dao-section-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
+  .dao-section-header h2{margin:0 0 6px;font-size:18px}
+  .dao-section-tag{padding:6px 10px;border-radius:999px;background:var(--tag-bg);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}
+  .dao-grid{display:grid;gap:14px}
+  .dao-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dao-callout{margin-bottom:0}
+  .dao-list{margin:0;padding-left:18px;color:var(--text);line-height:1.7}
+  .dao-list li{margin:2px 0}
+  .dao-placeholder{margin-top:12px;padding:12px 14px;border:1px dashed var(--border2);border-radius:14px;background:rgba(255,255,255,.55);color:var(--muted);font-size:13px;line-height:1.6}
+
+  @media(max-width:900px){.dao-grid.two{grid-template-columns:1fr}.page-header,.dao-section-header{flex-direction:column}}
+
   /* Stat row */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
