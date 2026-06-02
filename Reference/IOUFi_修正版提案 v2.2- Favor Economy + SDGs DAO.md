@@ -152,7 +152,7 @@ IOU NFT 的轉讓規則依其型態而定：
 每月進行 SDGs 提案與投票：
 
 * **提案內容**：活動細節、SDGs tags、申請撥款金額（ETH/USDC）、收款地址、截止時間。
-* **投票權重**：以使用者的 Reputation 計算（採 LifetimeRep + CurrentRep 混合規則）。
+* **投票權重**：以使用者的 Current Reputation 計算。
 * **質押機制**：投票時需鎖定部分 CurrentRep 作為 stake（鎖定期間無法用於其他提案，但不燃燒）。
 * **執行（Execute）**：投票通過的提案，可呼叫合約執行撥款，Treasury 會將 ETH/USDC 發送給活動主辦方。執行時可收取小額 governance fee 進 Treasury。
 
