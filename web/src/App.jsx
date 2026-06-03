@@ -203,7 +203,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="section">
+        {/*<section className="section">
           <h2>IOU lifecycle</h2>
           <div className="workflow-grid">
             <form className="panel" onSubmit={handleMint}>
@@ -307,7 +307,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        </section>
+        </section>*/}
 
         <section className="section panel">
           <h2>Runtime notes</h2>

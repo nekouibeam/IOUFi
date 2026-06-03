@@ -53,11 +53,11 @@ export default function DAO() {
     const title = form.title.value.trim();
     const description = form.description.value.trim();
     const requestedAmount = form.requestedAmount.value.trim() || '0';
-    if (!title) return alert('請輸入標題');
+    if (!title) return alert('Please enter a title');
     const addr = await ensureAccount();
-    if (!addr) return alert('請連線錢包');
+    if (!addr) return alert('Please connect your wallet');
     const rep = await getVotingPower(addr).catch(()=>0);
-    if (!rep || Number(rep) <= 0) return alert('只有 rep > 0 的帳號可以提案');
+    if (!rep || Number(rep) <= 0) return alert('Only accounts with rep > 0 can create proposals');
     const id = Date.now().toString();
     const newP = {
       id, title, description, requestedAmount,
@@ -74,14 +74,14 @@ export default function DAO() {
 
   async function handleVote(proposalId, support) {
     const addr = await ensureAccount();
-    if (!addr) return alert('請連線錢包');
+    if (!addr) return alert('Please connect your wallet');
     const p = proposals.find(x => x.id === proposalId);
-    if (!p || p.status !== 'open') return alert('此提案不可投票');
+    if (!p || p.status !== 'open') return alert('This proposal is not open for voting');
     const has = votes[proposalId] && votes[proposalId][addr];
-    if (has) return alert('此帳號已投過票');
+    if (has) return alert('This account has already voted');
     const rep = await getVotingPower(addr).catch(()=>0);
     const r = Number(rep || 0);
-    if (r <= 0) return alert('沒有可用 rep');
+    if (r <= 0) return alert('No available voting power');
     // 記錄 vote
     const newVotes = { ...votes, [proposalId]: { ...(votes[proposalId]||{}), [addr]: { support, repUsed: r, timestamp: Date.now() } } };
     setVotes(newVotes);
@@ -98,7 +98,7 @@ export default function DAO() {
   }
 
   function handleEndAllVoting() {
-    if (!confirm('確定要結束所有投票中的提案嗎？')) return;
+    if (!confirm('Are you sure you want to end all voting proposals?')) return;
     const updated = proposals.map(p => {
       if (p.status !== 'open') return p;
       const turnout = totalAvailableRep > 0 ? (p.totalRepParticipated / totalAvailableRep) : 0;
@@ -118,9 +118,9 @@ export default function DAO() {
       <section className="user-ious-hero panel dao-hero">
         <div className="user-ious-copy">
           <span className="eyebrow">DAO governance · demo flow</span>
-          <h1>DAO  提案、投票 演示</h1>
+          <h1>DAO Proposal, Voting Demo</h1>
           <p>
-            這個頁面保留簡化投票流程，但會沿用相同的卡片、區塊標頭、圓角與留白，讓整個專案看起來像同一個產品。
+            This page retains the simplified voting flow.
           </p>
           <div className="status-row">
             <span className="badge ok">Open proposals: {openProposals.length}</span>
@@ -133,7 +133,7 @@ export default function DAO() {
           <label className="label">DAO control</label>
           <div className="query-row dao-action-row">
             <button type="button" className="btn primary" onClick={() => handleEndAllVoting()}>
-              結束所有投票中的提案
+              End all voting proposals
             </button>
             <button
               type="button"
@@ -144,7 +144,7 @@ export default function DAO() {
             </button>
           </div>
           <div className="helper-text">
-            投票結束後，結果區會即時更新；提案與投票資料仍會保留在 localStorage。
+            After voting ends, the results section will update in real-time; proposal and voting data will still be retained in localStorage.
           </div>
         </div>
       </section>
@@ -174,8 +174,8 @@ export default function DAO() {
         <section className="iou-section dao-block">
           <div className="section-divider">
             <div>
-              <h3>建立提案</h3>
-              <p>Rep &gt; 0 的 account 可以送出新提案，並立即出現在投票區。</p>
+              <h3>Create Proposal</h3>
+              <p>Accounts with rep &gt; 0 can submit new proposals, which will immediately appear in the voting section.</p>
             </div>
             <div className="section-count">{proposals.length}</div>
           </div>
@@ -184,20 +184,20 @@ export default function DAO() {
             <form onSubmit={handleCreateProposal} className="dao-form">
               <div className="form-grid two">
                 <div className="form-group">
-                  <label htmlFor="dao-title">標題</label>
-                  <input id="dao-title" name="title" placeholder="例如：增加社群活動預算" />
+                  <label htmlFor="dao-title">Title</label>
+                  <input id="dao-title" name="title" placeholder="e.g., Increase community event budget" />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="dao-amount">需要資金</label>
-                  <input id="dao-amount" name="requestedAmount" placeholder="例如：10" />
+                  <label htmlFor="dao-amount">Requested Amount</label>
+                  <input id="dao-amount" name="requestedAmount" placeholder="e.g., 10" />
                 </div>
               </div>
               <div className="form-group">
-                <label htmlFor="dao-desc">敘述</label>
-                <textarea id="dao-desc" name="description" placeholder="簡述提案內容與目的" />
+                <label htmlFor="dao-desc">Description</label>
+                <textarea id="dao-desc" name="description" placeholder="Briefly describe the proposal and its purpose" />
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn primary">送出提案</button>
+                <button type="submit" className="btn primary">Submit Proposal</button>
               </div>
             </form>
           </div>
@@ -207,8 +207,8 @@ export default function DAO() {
         <section className="iou-section dao-block">
           <div className="section-divider">
             <div>
-              <h3>投票區</h3>
-              <p>只有 open 狀態的提案可以投票，投票權數直接沿用真實 rep。</p>
+              <h3>Voting Section</h3>
+              <p>Only open proposals can be voted on, and voting power is directly derived from real rep.</p>
             </div>
             <div className="section-count">{openProposals.length}</div>
           </div>
@@ -219,7 +219,7 @@ export default function DAO() {
                 <div className="card-topline">
                   <div>
                     <div className="iou-token">{proposal.title}</div>
-                    <div className="iou-subtitle">提案人：{proposal.proposer}</div>
+                    <div className="iou-subtitle">Proposer: {proposal.proposer}</div>
                   </div>
                   <div className="state-pill state-active">Voting</div>
                 </div>
@@ -231,8 +231,8 @@ export default function DAO() {
                 </div>
 
                 <div className="card-actions-grid dao-vote-actions">
-                  <button type="button" className="btn primary" onClick={() => handleVote(proposal.id, true)}>同意</button>
-                  <button type="button" className="btn" onClick={() => handleVote(proposal.id, false)}>反對</button>
+                  <button type="button" className="btn primary" onClick={() => handleVote(proposal.id, true)}>Approve</button>
+                  <button type="button" className="btn" onClick={() => handleVote(proposal.id, false)}>Against</button>
                 </div>
               </article>
             ))}
@@ -242,8 +242,8 @@ export default function DAO() {
         <section className="iou-section dao-block">
           <div className="section-divider">
             <div>
-              <h3>結果區</h3>
-              <p>已結束的提案會保留在這裡，顯示票數、參與率與通過狀態。</p>
+              <h3>Results Section</h3>
+              <p>Closed proposals will be retained here, displaying vote counts, participation rates, and approval status.</p>
             </div>
             <div className="section-count">{closedProposals.length}</div>
           </div>
@@ -262,9 +262,9 @@ export default function DAO() {
                 </div>
 
                 <div className="dao-result-grid">
-                  <span className="chip">同意: {proposal.votesFor}</span>
-                  <span className="chip">反對: {proposal.votesAgainst}</span>
-                  <span className="chip">rep 投票率: {(proposal.repTurnoutRate || 0).toFixed(3)}</span>
+                  <span className="chip">Approve: {proposal.votesFor}</span>
+                  <span className="chip">Against: {proposal.votesAgainst}</span>
+                  <span className="chip">Rep Turnout Rate: {(proposal.repTurnoutRate || 0).toFixed(3)}</span>
                   <span className="chip">Proposer: {proposal.proposer}</span>
                 </div>
               </article>

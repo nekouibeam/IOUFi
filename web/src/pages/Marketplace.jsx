@@ -57,7 +57,7 @@ export default function Marketplace() {
     try {
       const payload = await getMarketplaceIOUs({ limit: 100 });
       setItems(payload.data || []);
-      setStatus('Marketplace 已更新。');
+      setStatus('Marketplace updated.');
     } catch (err) {
       setError(err?.message || String(err));
       setItems([]);
@@ -68,11 +68,11 @@ export default function Marketplace() {
 
   async function connectWallet() {
     setError('');
-    setStatus('正在連線錢包...');
+    setStatus('Connecting wallet...');
     try {
       await contractApi.connectWallet();
       const addr = await refreshAccount();
-      setStatus(addr ? '錢包已連線。' : '錢包已連線，但目前沒有帳號。');
+      setStatus(addr ? 'Wallet connected.' : 'Wallet connected, but no account available.');
       await loadMarketplace();
     } catch (err) {
       setError(err?.message || String(err));
@@ -82,15 +82,15 @@ export default function Marketplace() {
   async function handleAccept(tokenId) {
     setBusyTokenId(String(tokenId));
     setError('');
-    setStatus(`Token #${tokenId} 送出 acceptIOU 交易中...`);
+    setStatus(`Token #${tokenId} submitting acceptIOU transaction...`);
     try {
       await contractApi.connectWallet();
       const tx = await contractApi.acceptIOU(tokenId);
-      setStatus(`Token #${tokenId} 交易已送出，等待確認...`);
+      setStatus(`Token #${tokenId} transaction submitted, waiting for confirmation...`);
       await tx.wait();
       // optimistic removal: remove token locally first to avoid indexer lag
       setItems((prev) => prev.filter((r) => String(r.tokenId) !== String(tokenId)));
-      setStatus(`Token #${tokenId} 已接受並轉為 Active。`);
+      setStatus(`Token #${tokenId} accepted and converted to Active.`);
       // then refresh listing in background
       loadMarketplace();
     } catch (err) {
@@ -143,7 +143,7 @@ export default function Marketplace() {
   return (
     <div className="marketplace-page">
       <div className="page-title">Marketplace</div>
-      <div className="page-sub">Demo B：顯示所有符合條件的 open bounty IOU，並可直接用目前連線帳號接受。</div>
+      <div className="page-sub">Display all open bounty IOUs that meet the criteria, and accept them directly with the currently connected account.</div>
 
       <div className="card">
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
@@ -178,7 +178,7 @@ export default function Marketplace() {
       <div className="card">
         <div className="card-title">Open bounty IOUs</div>
         {loading ? <div className="muted">Loading marketplace listings...</div> : null}
-        {!loading && items.length === 0 ? <div className="muted">目前沒有符合條件的 bounty IOU。</div> : null}
+        {!loading && items.length === 0 ? <div className="muted">No open bounty IOUs match the criteria.</div> : null}
 
         <div className="nft-grid" style={{ marginTop: 12 }}>
           {items.map((row) => {
@@ -216,10 +216,10 @@ export default function Marketplace() {
         </div>
       </div>
 
-      <div className="card">
+      {/* <div className="card">
         <div className="card-title">Demo B note</div>
         <p className="muted">Only open bounty IOUs are listed here. After a successful accept and page refresh, the token disappears because it no longer matches state = Pending and fulfiller = zero address.</p>
-      </div>
+      </div> */}
     </div>
   );
 }

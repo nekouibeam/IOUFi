@@ -49,7 +49,7 @@ export default function AcceptIOU() {
 
   async function refreshAccount() {
     if (!window.ethereum) {
-      setError('未偵測到錢包，請安裝並啟用 MetaMask。');
+      setError('Unconnected. Wallet not detected. Please install and enable MetaMask.');
       return '';
     }
 
@@ -75,7 +75,7 @@ export default function AcceptIOU() {
       const addr = await signer.getAddress();
       setAccount(addr);
       setDismissedTokenIds(new Set());
-      setStatus('錢包已連線，正在查詢待確認 Social IOU...');
+      setStatus('Wallet connected, loading pending Social IOUs...');
       await loadInbox(addr);
     } catch (err) {
       setError(err?.message || String(err));
@@ -109,7 +109,7 @@ export default function AcceptIOU() {
         }
       }
       setItems(verifiedRows);
-      setStatus('清單已更新。');
+      setStatus('List updated.');
     } catch (err) {
       setError(err?.message || String(err));
     } finally {
@@ -121,11 +121,11 @@ export default function AcceptIOU() {
     setBusy(true);
     setBusyTokenId(String(tokenId));
     setError('');
-    setStatus('送出 accept 交易中...');
+    setStatus('Submitting accept transaction...');
     try {
       await api.connectWallet();
       const tx = await api.acceptIOU(tokenId);
-      setStatus('交易已送出，等待確認...');
+      setStatus('Transaction submitted, waiting for confirmation...');
       await tx.wait();
       // optimistic removal: mark dismissed locally to hide card immediately
       setDismissedTokenIds((prev) => {
@@ -168,7 +168,7 @@ export default function AcceptIOU() {
   return (
     <div>
       <div className="page-title">Accept Social IOU</div>
-      <div className="page-sub">Demo A：以 fulfiller 帳號登入後，查看並接受指派給你的 Pending Social IOU。</div>
+      <div className="page-sub">After logging in with a fulfiller account, view and accept Pending Social IOUs assigned to you.</div>
 
       <div className="card">
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -181,10 +181,10 @@ export default function AcceptIOU() {
       </div>
 
       <div className="card">
-        <div className="card-title">待確認 Social IOU（只顯示 fulfiller = 目前帳號）</div>
+        <div className="card-title">Unconfirmed Social IOU Waitlist（fulfiller = Current Account）</div>
         {loadingList ? <div className="muted">Loading...</div> : null}
         {!loadingList && socialPending.length === 0 ? (
-          <div className="muted">目前沒有待你確認的 Social IOU。</div>
+          <div className="muted">Currently, there are no pending Social IOUs to confirm.</div>
         ) : null}
 
         <div className="nft-grid" style={{ marginTop: 10 }}>

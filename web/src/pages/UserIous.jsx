@@ -8,10 +8,10 @@ import IOUNFTArtifact from '../contracts/IOUNFT.json';
 
 const IOU_ABI = Array.isArray(IOUNFTArtifact) ? IOUNFTArtifact : (IOUNFTArtifact.abi || []);
 const SECTION_ORDER = [
-  { key: 'created', title: 'Created by me', subtitle: '我發出的 IOU', empty: '沒有你作為 creator 的進行中 IOU。' },
-  { key: 'owedToMe', title: 'Owed to me', subtitle: '我持有、可要求履約或轉移的 IOU', empty: '沒有你作為 owner 的進行中 IOU。' },
-  { key: 'owedByMe', title: 'Owed by me', subtitle: '我需要提供服務的 IOU', empty: '沒有你作為 fulfiller 的進行中 IOU。' },
-  { key: 'history', title: 'History', subtitle: '已結清 / 已取消的歷史紀錄（優先顯示）', empty: '沒有歷史紀錄。' },
+  { key: 'created', title: 'Created by me', subtitle: 'IOU minted by me', empty: 'No active IOUs created by you.' },
+  { key: 'owedToMe', title: 'Owed to me', subtitle: 'I hold, can request fulfillment or transfer', empty: 'No active IOUs owed to you.' },
+  { key: 'owedByMe', title: 'Owed by me', subtitle: 'IOU I need to provide services for', empty: 'No active IOUs owed by you.' },
+  { key: 'history', title: 'History', subtitle: 'Settled / Cancelled historical records (priority display)', empty: 'No historical records.' },
 ];
 
 function SkeletonCard() {
@@ -40,6 +40,9 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
   }[String(token.state)] ?? String(token.state ?? '—');
   const typeLabel = Number(token.collateral ?? 0) > 0 ? 'Bounty' : 'Social';
   const closeStatus = token.closeRequested ? 'Close requested' : 'Close open';
+  const unhappyCloseStatus = String(token.state) === '2'
+    ? (token.unhappyClose ? 'Unhappy Close' : 'Happy Close')
+    : '';
   const transferStatus = token.transferRequested ? `Transferring → ${token.transferTo || '—'}` : 'Transfer open';
   const canRequestClose = token.sectionKey === 'owedByMe' && !token.closeRequested && !token.syncing;
   const canRespondClose = token.sectionKey === 'owedToMe' && token.closeRequested && !token.syncing;
@@ -68,6 +71,7 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
         <span className="chip">{token.serviceType || 'No service type'}</span>
         <span className={`chip ${token.closeRequested ? 'chip-warn' : 'chip-ok'}`}>{closeStatus}</span>
         <span className={`chip ${token.transferRequested ? 'chip-warn' : 'chip-ok'}`}>{transferStatus}</span>
+        <span className={`chip ${token.unhappyClose ? 'chip-warn' : 'chip-ok'}`}>{unhappyCloseStatus}</span>
         <span className={`chip ${token.syncing ? 'chip-warn' : 'chip-ok'}`}>{token.syncing ? 'Syncing' : 'Synced'}</span>
       </div>
 
@@ -90,13 +94,13 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
             type="button"
             className={token.closeRequested ? 'btn full' : 'btn primary full'}
             disabled={!canRequestClose || busyAction === 'request'}
-            title={token.closeRequested ? '已送出結案申請' : '由 fulfiller 發起結案申請'}
+            title={token.closeRequested ? 'Close requested' : 'Request close'}
             onClick={() => runAction('request', () => onRequestClose(token.tokenId))}
           >
-            {busyAction === 'request' ? '申請中…' : (token.closeRequested ? '已申請結案' : '申請結案')}
+            {busyAction === 'request' ? 'Requesting…' : (token.closeRequested ? 'Close requested' : 'Request Close')}
           </button>
           <div className="action-note">
-            {token.closeRequested ? '已送出申請，等待 owner 在 Owed to me 區塊確認或退回。' : '先由 fulfiller 送出結案申請。'}
+            {token.closeRequested ? 'Close requested, waiting for owner to confirm or reject in the "Owed to me" section.' : 'First, have the fulfiller submit a close request.'}
           </div>
         </div>
       ) : null}
@@ -105,7 +109,7 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
         <div className="card-actions">
           {token.closeRequested ? (
             <>
-              <div className="action-note">已收到結案申請，請確認或退回。</div>
+              <div className="action-note">Close request received, please confirm or reject.</div>
               <div className="rating-row">
                 <label className="label" htmlFor={`close-rating-${token.tokenId}`}>Owner rating</label>
                 <select
@@ -127,7 +131,7 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
                   disabled={!canRespondClose || busyAction === 'confirm'}
                   onClick={() => runAction('confirm', () => onConfirmClose(token.tokenId, rating))}
                 >
-                  {busyAction === 'confirm' ? '確認中…' : '確認結案'}
+                  {busyAction === 'confirm' ? 'Confirming…' : 'Confirm Close'}
                 </button>
                 <button
                   type="button"
@@ -135,13 +139,13 @@ function TokenCard({ token, onRequestClose, onConfirmClose, onRejectClose }) {
                   disabled={!canRespondClose || busyAction === 'reject'}
                   onClick={() => runAction('reject', () => onRejectClose(token.tokenId))}
                 >
-                  {busyAction === 'reject' ? '退回中…' : '退回申請'}
+                  {busyAction === 'reject' ? 'Rejecting…' : 'Reject Close'}
                 </button>
               </div>
             </>
           ) : (
-            <button type="button" className="btn full" disabled title="等待 fulfiller 送出結案申請後才可操作">
-              等待結案申請
+            <button type="button" className="btn full" disabled title="Wait for the fulfiller to submit a close request before you can take action">
+              Waiting for Close Request
             </button>
           )}
         </div>
@@ -201,7 +205,7 @@ export default function UserIous() {
 
   async function refreshAccount() {
     if (!window.ethereum) {
-      setError('未偵測到錢包，請安裝並啟用 MetaMask。');
+      setError('Wallet not detected, please install and enable MetaMask.');
       return '';
     }
 
@@ -276,7 +280,7 @@ export default function UserIous() {
     const addr = await refreshAccount();
     const normalized = normalizeAddress(addr);
     if (!/^0x[0-9a-f]{40}$/.test(normalized)) {
-      setError('請先連接錢包，再查詢 IOU。');
+      setError('Please connect your wallet, then search for IOUs.');
       return;
     }
     await loadAddress(normalized, { retainVisibleData: true });
@@ -300,15 +304,15 @@ export default function UserIous() {
   }
 
   async function handleRequestClose(tokenId) {
-    return runCloseAction('申請結案', () => api.requestClose(tokenId));
+    return runCloseAction('Request Close', () => api.requestClose(tokenId));
   }
 
   async function handleConfirmClose(tokenId, rating) {
-    return runCloseAction('確認結案', () => api.confirmClose(tokenId, rating));
+    return runCloseAction('Confirm Close', () => api.confirmClose(tokenId, rating));
   }
 
   async function handleRejectClose(tokenId) {
-    return runCloseAction('退回申請', () => api.rejectClose(tokenId));
+    return runCloseAction('Reject Close', () => api.rejectClose(tokenId));
   }
 
   useEffect(() => {
@@ -339,10 +343,10 @@ export default function UserIous() {
       <section className="user-ious-hero panel">
         <div className="user-ious-copy">
           <span className="eyebrow">Address query · off-chain index + on-chain verification</span>
-          <h1>查詢與你有關的 IOU，並按角色自動分組。</h1>
+          <h1>Search for IOUs related to you, automatically grouped by role.</h1>
           <p>
-            History 具有最高優先序，若狀態為 Settled 或 Cancelled，只會出現在 History。
-            Pending / Active 的 token 則可依角色同時出現在 Created by me、Owed to me、Owed by me。
+            History has the highest priority. If the status is Settled or Cancelled, it will only appear in History.
+            Pending / Active tokens can appear in Created by me, Owed to me, and Owed by me based on their role.
           </p>
           <div className="status-row">
             <span className={`badge ${loading ? 'warn' : 'ok'}`}>{loading ? 'Fetching indexer results...' : 'Indexer ready'}</span>
@@ -363,7 +367,7 @@ export default function UserIous() {
           </div>
           <div className="mono small" style={{ color: 'var(--muted)' }}>currentAccount: {account || 'not connected'}</div>
           <div className="helper-text">
-            以目前連線錢包地址查詢，結果會分組為 <strong>Created by me</strong>、<strong>Owed to me</strong>、<strong>Owed by me</strong>、<strong>History</strong>。
+            Search by the currently connected wallet address, results will be grouped as <strong>Created by me</strong>, <strong>Owed to me</strong>, <strong>Owed by me</strong>, and <strong>History</strong>.
           </div>
           {error ? <div className="alert warn" style={{ marginTop: 12 }}>{error}</div> : null}
         </div>

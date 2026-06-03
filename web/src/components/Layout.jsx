@@ -4,15 +4,15 @@ import { Link, useLocation } from 'react-router-dom';
 export default function Layout({ children }) {
   const loc = useLocation();
   const navItems = [
-    { to: '/', label: '總覽', icon: '⌂' },
+    { to: '/', label: 'Overview', icon: '⌂' },
     { to: '/reputation', label: 'Reputation', icon: '★' },
-    { to: '/create', label: '發放人情債', icon: '＋' },
-    { to: '/accept', label: '待確認', icon: '✓' },
-    { to: '/ious', label: 'IOU 查詢', icon: '⇄' },
-    { to: '/transfer', label: '轉送', icon: '⇆' },
-    { to: '/market', label: 'Favor 市場', icon: '⊡' },
-    { to: '/dao', label: 'DAO 投票', icon: '◈' },
-    { to: '/treasury', label: 'Treasury', icon: '◎' },
+    { to: '/create', label: 'Issue IOU', icon: '＋' },
+    { to: '/accept', label: 'Accept IOU', icon: '✓' },
+    { to: '/ious', label: 'IOU Search', icon: '⇄' },
+    { to: '/transfer', label: 'Transfer', icon: '⇆' },
+    { to: '/market', label: 'Favor Market', icon: '⊡' },
+    { to: '/dao', label: 'DAO Voting', icon: '◈' },
+    {/* to: '/treasury', label: 'Treasury', icon: '◎' */},
   ];
 
   return (
@@ -24,7 +24,7 @@ export default function Layout({ children }) {
         </div>
 
         <nav className="nav">
-          <div className="nav-section">主要</div>
+          <div className="nav-section">Main</div>
           {navItems.map((it) => (
             <Link
               key={it.to}

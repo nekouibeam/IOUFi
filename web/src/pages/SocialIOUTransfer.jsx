@@ -323,7 +323,7 @@ export default function SocialIOUTransfer() {
         <div>
           <span className="eyebrow">Three-party transfer · active social IOU only</span>
           <h1>Social IOU Transfer</h1>
-          <p>先由原 owner 申請轉送，再由新 owner 與 fulfiller 逐一確認。固定手續費為 {formatEth(feeWei)}，且必須精準支付。</p>
+          <p>First, the original owner initiates the transfer request. Then, the new owner and fulfiller confirm the transfer sequentially. The fixed fee is {formatEth(feeWei)}, and it must be paid precisely.</p>
         </div>
         <div className="transfer-hero-side">
           <button className="btn primary" onClick={connectWalletAndLoad}>{account ? 'Reconnect wallet' : 'Connect wallet'}</button>
@@ -338,10 +338,10 @@ export default function SocialIOUTransfer() {
 
       <section className="transfer-board">
         <Column
-          title="左邊 - 元 owner"
-          subtitle="列出你作為 owner 的 Active social IOU，並可對指定新 owner 申請轉送。"
+          title="Original Owner"
+          subtitle="List Active social IOUs you own, and apply for transfer to a specified new owner."
           tokens={ownerTokens}
-          empty={loading ? 'Loading...' : '目前沒有可轉送的 Active social IOU。'}
+          empty={loading ? 'Loading...' : 'No active social IOUs available for transfer.'}
           mode="owner"
           busy={busyKey}
           draftTargets={draftTargets}
@@ -353,10 +353,10 @@ export default function SocialIOUTransfer() {
         />
 
         <Column
-          title="中間 - 新 owner"
-          subtitle="列出已被指定為你為新 owner 的待確認轉讓。"
+          title="New Owner"
+          subtitle="List transfers that have been assigned to you as the new owner."
           tokens={newOwnerTokens}
-          empty={loading ? 'Loading...' : '目前沒有指定給你的轉讓。'}
+          empty={loading ? 'Loading...' : 'No transfers assigned to you.'}
           mode="newOwner"
           busy={busyKey}
           draftTargets={draftTargets}
@@ -368,10 +368,10 @@ export default function SocialIOUTransfer() {
         />
 
         <Column
-          title="右邊 - Fulfiller"
-          subtitle="列出你作為 fulfiller 的待確認轉讓。"
+          title="Fulfiller"
+          subtitle="List transfers that require your confirmation."
           tokens={fulfillerTokens}
-          empty={loading ? 'Loading...' : '目前沒有你需要確認的轉讓。'}
+          empty={loading ? 'Loading...' : 'No transfers requiring your confirmation.'}
           mode="fulfiller"
           busy={busyKey}
           draftTargets={draftTargets}

@@ -1,8 +1,26 @@
 # IOUNFT Life Cycle State Machine
 
 The following state machine diagram illustrates the life cycle of an IOUNFT (IOU Non-Fungible Token) as defined in the `IOUNFT.sol` smart contract.
+## Main Diagram
+```mermaid
+stateDiagram-v2
+    %% Main States
+    [*] --> Pending : mintIOU
+    
+    %% Pending State Transitions
+    Pending --> Pending : modifyPending\n(by creator)
+    Pending --> Active : acceptIOU\n(by fulfiller)
+    Pending --> Cancelled : refundPending\n(by creator)
+    
+    %% Active State Transitions
+    %% 簡化內部流程，將結算邏輯合併為單一高階轉換
+    Active --> Settled : requestClose & confirmClose\n(contract executes settleIOU)
+    Active --> Cancelled : timeoutClaim\n(by creator after deadline)
 
-## Diagram
+    Settled --> [*]
+    Cancelled --> [*]
+```
+## Full Diagram
 
 ```mermaid
 stateDiagram-v2
@@ -11,22 +29,15 @@ stateDiagram-v2
     
     %% Pending State Transitions
     Pending --> Active : acceptIOU\n(by fulfiller)
-    Pending --> Cancelled : refundPending\n(by creator)
     Pending --> Pending : modifyPending\n(by creator)
     
-    %% Active State Transitions
-    Active --> Settled : settleSocialIOU / settleBountyIOU\n(by creator)
-    Active --> Settled : confirmClose\n(by creator/owner after fulfiller requests)
-    Active --> Cancelled : timeoutClaim\n(by creator after deadline)
-
-    %% Sub-states for Active (Close Requests and Transfers)
+    %% Sub-states for Active
     state Active {
         %% Close Request Flow
         state "Fulfillment Flow" as FulfillmentFlow {
             [*] --> Working
             Working --> CloseRequested : requestClose\n(by fulfiller)
             CloseRequested --> Working : rejectClose\n(by owner)
-            %% confirmClose exits the Active state entirely to Settled
         }
         
         --
@@ -44,9 +55,16 @@ stateDiagram-v2
                 NewOwnerConfirmed --> Executed : confirmTransferByFulfiller
                 FulfillerConfirmed --> Executed : confirmTransferByNewOwner
             }
-            Executed --> Idle : (Internal execution transfers ownership\nand resets transfer state)
+            Executed --> Idle : Internal execution transfers\nownership and resets state
         }
     }
+
+    %% Settlement Flow
+    CloseRequested --> Settled : confirmClose (by owner)\ncontract executes settleIOU
+
+    %% Cancellations placed at the end to improve routing and reduce overlap
+    Pending --> Cancelled : refundPending\n(by creator)
+    Active --> Cancelled : timeoutClaim\n(by creator after deadline)
 
     Settled --> [*]
     Cancelled --> [*]

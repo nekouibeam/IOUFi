@@ -76,8 +76,8 @@ export default function CreateIOU() {
   const [result, setResult] = useState(null);
 
   const feeHint = useMemo(() => {
-    if (tab === 'social') return 'Transfer Fee: Social IOU transfer policy';
-    return 'Transfer Fee: Bounty IOU transfer policy';
+    if (tab === 'social') return 'Transfer Fee: 0';
+    return 'Transfer Fee: 0.0015 ETH';
   }, [tab]);
 
   function onField(key) {
@@ -173,8 +173,8 @@ export default function CreateIOU() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <div className="page-title">發放人情債 NFT</div>
-          <div className="page-sub">Social / Bounty 分頁與合約參數語意對齊（`transferable` 固定 false）。</div>
+          <div className="page-title">Mint IOU NFT</div>
+          <div className="page-sub">Social / Bounty </div>
         </div>
 
         <div style={{ minWidth: 220, display: 'grid', gap: 8, justifyItems: 'end' }}>
@@ -197,9 +197,9 @@ export default function CreateIOU() {
       <form className="card" onSubmit={handleSubmit}>
         <div className="form-row">
           <div className="form-group">
-            <label>Fulfiller 地址 {tab === 'social' ? '（必填）' : '（可留空）'}</label>
+            <label>Fulfiller Address {tab === 'social' ? '（must fill）' : '（leave blank）'}</label>
             <select value={form.fulfiller} onChange={onField('fulfiller')}>
-              <option value="">{tab === 'social' ? '-- 選擇 fulfiller --' : '-- 留空代表 open marketplace --'}</option>
+              <option value="">{tab === 'social' ? '-- select fulfiller --' : '-- open marketplace --'}</option>
               {DEMO_RECIPIENTS.map((recipient) => (
                 <option key={recipient.address} value={recipient.address}>
                   {recipient.name} · {recipient.address}
@@ -209,15 +209,15 @@ export default function CreateIOU() {
             {errors.fulfiller ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.fulfiller}</div> : null}
           </div>
 
-          <div className="form-group">
+          {/* <div className="form-group">
             <label>Reputation reward</label>
             <input value="由合約依 IOU 類型與衰減規則自動計算" disabled />
-          </div>
+          </div> */}
         </div>
 
         <div className="form-group">
-          <label>人情事件描述</label>
-          <input placeholder="例如：幫忙搬家、技術諮詢" value={form.description} onChange={onField('description')} />
+          <label>{tab === 'social' ? 'Favor event description' : 'Favor requirement description'}</label>
+          <input placeholder="Example: Help with moving, technical consultation, etc." value={form.description} onChange={onField('description')} />
           {errors.description ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.description}</div> : null}
         </div>
 
@@ -228,8 +228,8 @@ export default function CreateIOU() {
             {errors.deadline ? <div style={{ color: 'var(--warn)', marginTop: 6 }}>{errors.deadline}</div> : null}
           </div>
           <div className="form-group">
-            <label>Service type（可選）</label>
-            <input placeholder="例如：修電腦、搬家、UI 設計" value={form.serviceType} onChange={onField('serviceType')} />
+            <label>Fulfiller Service type{tab === 'social' ? '（optional）' : '（must fill）'}</label>
+            <input placeholder="Example: Repair computer, moving, UI design" value={form.serviceType} onChange={onField('serviceType')} />
           </div>
         </div>
 
@@ -247,7 +247,7 @@ export default function CreateIOU() {
 
         {errors.submit ? <div className="alert warn">{errors.submit}</div> : null}
         <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
-          <button className="btn primary" type="submit" disabled={busy}>{busy ? '送出中…' : '確認發放'}</button>
+          <button className="btn primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit'}</button>
         </div>
       </form>
 

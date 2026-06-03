@@ -15,6 +15,7 @@ export function buildTokenView(row, enriched) {
   const displayedCloseRequestedAt = chain?.closeRequestedAt ?? row.closeRequestedAt ?? row.close_requested_at ?? null;
   const displayedRepPreAwarded = chain?.repPreAwarded ?? row.repPreAwarded ?? row.rep_pre_awarded ?? false;
   const displayedRepPreAwardedAmount = chain?.repPreAwardedAmount ?? row.repPreAwardedAmount ?? row.rep_pre_awarded_amount ?? null;
+  const displayedUnhappyClose = chain?.unhappyClose ?? row.unhappyClose ?? row.unhappy_close ?? false;
   const displayedTransferRequested = chain?.transferRequested ?? row.transferRequested ?? row.transfer_requested ?? false;
   const displayedTransferTo = chain?.transferTo ?? row.transferTo ?? row.transfer_to ?? null;
   const displayedTransferNewOwnerConfirmed = chain?.transferNewOwnerConfirmed ?? row.transferNewOwnerConfirmed ?? row.transfer_new_owner_confirmed ?? false;
@@ -36,6 +37,7 @@ export function buildTokenView(row, enriched) {
     closeRequestedAt: displayedCloseRequestedAt,
     repPreAwarded: Boolean(displayedRepPreAwarded),
     repPreAwardedAmount: displayedRepPreAwardedAmount,
+    unhappyClose: Boolean(displayedUnhappyClose),
     transferRequested: Boolean(displayedTransferRequested),
     transferTo: displayedTransferTo,
     transferNewOwnerConfirmed: Boolean(displayedTransferNewOwnerConfirmed),
