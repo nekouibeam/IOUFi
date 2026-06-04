@@ -8,14 +8,21 @@ stateDiagram-v2
     [*] --> Pending : mintIOU
     
     %% Pending State Transitions
-    Pending --> Pending : modifyPending\n(by creator)
-    Pending --> Active : acceptIOU\n(by fulfiller)
-    Pending --> Cancelled : refundPending\n(by creator)
+    Pending --> Pending : modifyPending<br>(by creator)
+    Pending --> Active : acceptIOU<br>(by fulfiller)
+    Pending --> Cancelled : refundPending<br>(by creator)
     
-    %% Active State Transitions
-    %% 簡化內部流程，將結算邏輯合併為單一高階轉換
-    Active --> Settled : requestClose & confirmClose\n(contract executes settleIOU)
-    Active --> Cancelled : timeoutClaim\n(by creator after deadline)
+    %% Active State with simple nodes
+    state Active {
+        FulfillmentFlow : Fulfillment Flow
+        TransferFlow : Transfer Flow (Social IOU Only)
+    }
+
+    %% Settlement Flow (Triggered from Fulfillment Flow)
+    FulfillmentFlow --> Settled : requestClose & confirmClose<br>(contract executes settleIOU)
+    
+    %% Timeout Flow
+    Active --> Cancelled : timeoutClaim<br>(by creator after deadline)
 
     Settled --> [*]
     Cancelled --> [*]
@@ -28,16 +35,16 @@ stateDiagram-v2
     [*] --> Pending : mintIOU
     
     %% Pending State Transitions
-    Pending --> Active : acceptIOU\n(by fulfiller)
-    Pending --> Pending : modifyPending\n(by creator)
+    Pending --> Active : acceptIOU<br>(by fulfiller)
+    Pending --> Pending : modifyPending<br>(by creator)
     
     %% Sub-states for Active
     state Active {
         %% Close Request Flow
         state "Fulfillment Flow" as FulfillmentFlow {
             [*] --> Working
-            Working --> CloseRequested : requestClose\n(by fulfiller)
-            CloseRequested --> Working : rejectClose\n(by owner)
+            Working --> CloseRequested : requestClose<br>(by fulfiller)
+            CloseRequested --> Working : rejectClose<br>(by owner)
         }
         
         --
@@ -45,8 +52,8 @@ stateDiagram-v2
         %% Transfer Flow (For Social IOUs)
         state "Transfer Flow (Social IOU Only)" as TransferFlow {
             [*] --> Idle
-            Idle --> TransferInitiated : startTransfer\n(by owner)
-            TransferInitiated --> Idle : rejectTransfer\n(by owner/fulfiller/newOwner)
+            Idle --> TransferInitiated : startTransfer<br>(by owner)
+            TransferInitiated --> Idle : rejectTransfer<br>(by owner/fulfiller/newOwner)
             
             state "Transfer Approvals" as Approvals {
                 TransferInitiated --> AwaitingApprovals
@@ -55,16 +62,16 @@ stateDiagram-v2
                 NewOwnerConfirmed --> Executed : confirmTransferByFulfiller
                 FulfillerConfirmed --> Executed : confirmTransferByNewOwner
             }
-            Executed --> Idle : Internal execution transfers\nownership and resets state
+            Executed --> Idle : Internal execution transfers<br>ownership and resets state
         }
     }
 
     %% Settlement Flow
-    CloseRequested --> Settled : confirmClose (by owner)\ncontract executes settleIOU
+    CloseRequested --> Settled : confirmClose (by owner)<br>contract executes settleIOU
 
     %% Cancellations placed at the end to improve routing and reduce overlap
-    Pending --> Cancelled : refundPending\n(by creator)
-    Active --> Cancelled : timeoutClaim\n(by creator after deadline)
+    Pending --> Cancelled : refundPending<br>(by creator)
+    Active --> Cancelled : timeoutClaim<br>(by creator after deadline)
 
     Settled --> [*]
     Cancelled --> [*]

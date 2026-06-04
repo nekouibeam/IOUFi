@@ -1,5 +1,39 @@
 # IOUFi Reputation System Explanation
 
+```mermaid
+sequenceDiagram
+    actor Creator
+    actor Fulfiller
+    participant IOUNFT
+    participant Ledger as ReputationLedger
+
+    %% Minting
+    Creator->>IOUNFT: createIOU(collateral)
+    Note over IOUNFT: Assign Raw Bases:<br>Social: 10 (C), 8 (F)<br>Bounty: 8 (C), 10 (F)
+
+    %% Acceptance
+    Fulfiller->>IOUNFT: acceptIOU(tokenId)
+    IOUNFT->>Ledger: recordInteraction & get decayLevel
+    Note right of Ledger: decayLevel increases for interacting pair<br>Reduces over time (1 level per 10 days)
+    Note over IOUNFT: Calculate Decayed Bases:<br>adjusted = rawBase >> decayLevel
+    IOUNFT->>Ledger: addRep(Creator, 50% decayedCreatorBase)
+    Note right of IOUNFT: Pre-award Creator
+
+    %% Settlement
+    Creator->>IOUNFT: settle(tokenId, rating)
+    alt Rating == 2 (Great)
+        IOUNFT->>Ledger: addRep(Creator, 50% decayedCreatorBase)
+        IOUNFT->>Ledger: addRep(Fulfiller, 100% decayedFulfillerBase)
+    else Rating == 1 (Neutral)
+        IOUNFT->>Ledger: addRep(Creator, 30% decayedCreatorBase)
+        IOUNFT->>Ledger: addRep(Fulfiller, 60% decayedFulfillerBase)
+    else Rating == 0 (Bad)
+        IOUNFT->>Ledger: addRep(Creator, 10% decayedCreatorBase)
+        IOUNFT->>Ledger: slash(Fulfiller, 1)
+        Note over IOUNFT: Mark as unhappyClose
+    end
+```
+
 The reputation system in IOUFi is designed to reward positive contributions to the ecosystem while providing mechanisms to resist Sybil attacks (reputation farming) between collaborating accounts. The core logic is implemented across two main contracts: `IOUNFT.sol` (managing state and business logic) and `ReputationLedger.sol` (managing balances and decay).
 
 ## 1. Reputation Bases (Raw Base)
