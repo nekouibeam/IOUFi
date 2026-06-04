@@ -74,6 +74,25 @@ contract IOUNFTTest {
         assert(data.state == IOUNFT.State.Settled);
     }
 
+    function testSettleBountyIOUBadRatingDoesNotRevertWithoutRep() external {
+        BountyReceiver fulfiller = new BountyReceiver();
+        uint256 tokenId = iou.mintIOU{value: 1 ether}(
+            address(fulfiller),
+            block.timestamp + 1 days,
+            true,
+            "Bounty work",
+            "Development"
+        );
+        fulfiller.accept(iou, tokenId);
+
+        iou.settleBountyIOU(tokenId, 0);
+
+        IOUNFT.IOUData memory data = iou.getIOU(tokenId);
+        assert(data.state == IOUNFT.State.Settled);
+        (, uint256 lifetimeRep,) = ledger.getReputation(address(fulfiller));
+        assert(lifetimeRep == 0);
+    }
+
     function testFreezeRepBaseStoresFrozenValues() external {
         uint256 tokenId = iou.mintIOU{value: 0}(
             address(this),

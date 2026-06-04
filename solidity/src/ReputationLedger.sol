@@ -71,10 +71,16 @@ contract ReputationLedger is Ownable, IReputationLedger {
         require(account != address(0), "ReputationLedger: zero account");
 
         ReputationData storage target = reputations[account];
-        require(target.currentRep >= target.lockedRep + amount, "ReputationLedger: insufficient rep");
-        target.currentRep -= amount;
+        uint256 available = target.currentRep > target.lockedRep ? target.currentRep - target.lockedRep : 0;
+        uint256 slashed = amount < available ? amount : available;
+        if (slashed == 0) {
+            emit ReputationChanged(account, 0, 0, 0);
+            return;
+        }
 
-        emit ReputationChanged(account, -int256(amount), 0, 0);
+        target.currentRep -= slashed;
+
+        emit ReputationChanged(account, -int256(slashed), 0, 0);
     }
 
     function lockRep(address account, uint256 amount) external onlyDAO {
